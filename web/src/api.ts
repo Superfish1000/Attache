@@ -4,8 +4,11 @@ import type {
   ContainerState,
   ContainersResponse,
   McpStatus,
+  MeResponse,
   O365Member,
   O365SettingsView,
+  Role,
+  SettingsView,
   StatusResponse,
   SyncResult,
   User,
@@ -14,6 +17,10 @@ import type {
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
   if (!res.ok) {
+    if (res.status === 401 && !url.startsWith('/api/auth')) {
+      // session gone — bounce the app back to the login screen
+      window.dispatchEvent(new Event('attache:unauthorized'))
+    }
     let msg = `request failed (${res.status})`
     try {
       const body = (await res.json()) as { error?: string }
@@ -36,9 +43,22 @@ const json = (method: string, body: unknown): RequestInit => ({
 export const api = {
   status: () => req<StatusResponse>('/api/status'),
   containers: () => req<ContainersResponse>('/api/containers'),
+  auth: {
+    me: () => req<MeResponse>('/api/auth/me'),
+    setup: (name: string, email: string, password: string) =>
+      req<{ user: User }>('/api/auth/setup', json('POST', { name, email, password })),
+    login: (email: string, password: string) =>
+      req<{ user: User }>('/api/auth/login', json('POST', { email, password })),
+    logout: () => req<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+  },
   users: {
     list: () => req<User[]>('/api/users'),
-    create: (name: string, email: string) => req<User>('/api/users', json('POST', { name, email })),
+    create: (u: { name: string; email: string; role: Role; password?: string }) =>
+      req<User>('/api/users', json('POST', u)),
+    update: (id: string, patch: { name?: string; email?: string; role?: Role }) =>
+      req<User>(`/api/users/${id}`, json('PATCH', patch)),
+    setPassword: (id: string, password: string) =>
+      req<User>(`/api/users/${id}/password`, json('PUT', { password })),
     remove: (id: string) => req<void>(`/api/users/${id}`, { method: 'DELETE' }),
   },
   agents: {
@@ -62,6 +82,14 @@ export const api = {
       req<O365SettingsView>('/api/o365/settings', json('PUT', s)),
     preview: () => req<O365Member[]>('/api/o365/preview'),
     sync: () => req<SyncResult>('/api/o365/sync', { method: 'POST' }),
+  },
+  settings: {
+    get: () => req<SettingsView>('/api/settings'),
+    save: (s: {
+      server?: Partial<SettingsView['server']>
+      docker?: Partial<SettingsView['docker']>
+      security?: Partial<SettingsView['security']>
+    }) => req<SettingsView>('/api/settings', json('PUT', s)),
   },
   mcp: {
     status: () => req<McpStatus>('/api/mcp/status'),

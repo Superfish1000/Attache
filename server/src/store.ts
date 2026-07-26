@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import type { Agent, Settings, User } from './types.js'
+import type { Agent, Session, Settings, User } from './types.js'
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 export const DATA_DIR = process.env.ATTACHE_DATA_DIR ?? join(ROOT, 'data')
@@ -12,14 +12,24 @@ const DB_FILE = join(DATA_DIR, 'db.json')
 interface DB {
   users: User[]
   agents: Agent[]
+  sessions: Session[]
   settings: Settings
 }
 
 const defaults = (): DB => ({
   users: [],
   agents: [],
+  sessions: [],
   settings: {
     o365: { tenantId: '', clientId: '', clientSecret: '', groupId: '' },
+    server: { host: '127.0.0.1', port: 7701 },
+    docker: {
+      socketPath: '',
+      defaultImage: 'alpine:3.20',
+      defaultCommand: ['sleep', 'infinity'],
+      autoPull: true,
+    },
+    security: { sessionTtlHours: 72 },
     lastO365Sync: null,
   },
 })
@@ -29,12 +39,20 @@ function load(): DB {
   const raw = JSON.parse(readFileSync(DB_FILE, 'utf8'))
   const d = defaults()
   return {
-    users: raw.users ?? [],
+    // role backfill for records written before auth existed
+    users: (raw.users ?? []).map((u: Omit<User, 'role'> & { role?: User['role'] }) => ({
+      ...u,
+      role: u.role ?? 'standard',
+    })),
     agents: raw.agents ?? [],
+    sessions: raw.sessions ?? [],
     settings: {
       ...d.settings,
       ...(raw.settings ?? {}),
       o365: { ...d.settings.o365, ...(raw.settings?.o365 ?? {}) },
+      server: { ...d.settings.server, ...(raw.settings?.server ?? {}) },
+      docker: { ...d.settings.docker, ...(raw.settings?.docker ?? {}) },
+      security: { ...d.settings.security, ...(raw.settings?.security ?? {}) },
     },
   }
 }

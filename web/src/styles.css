@@ -328,6 +328,79 @@ label {
   flex-wrap: wrap;
 }
 
+/* auth */
+.login-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 28px;
+  width: 340px;
+}
+
+.login-brand {
+  border-bottom: none;
+  padding: 0 0 10px;
+  margin-bottom: 4px;
+}
+
+.userbox {
+  border-top: 1px solid var(--border);
+  margin-top: 14px;
+  padding: 12px 20px 0;
+}
+
+.userbox-name {
+  font-weight: 600;
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userbox-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.userbox-logout {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.userbox-logout:hover {
+  color: var(--text);
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: normal;
+  margin-bottom: 0;
+  cursor: pointer;
+}
+
+.check-row input {
+  accent-color: var(--accent);
+}
+
+input:disabled,
+textarea:disabled {
+  opacity: 0.55;
+}
+
 /* misc */
 .error-banner {
   background: rgba(248, 81, 73, 0.12);

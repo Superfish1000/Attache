@@ -4,9 +4,6 @@ import { AGENTS_DIR, db, newId, save } from './store.js'
 import type { Agent, AgentConfig } from './types.js'
 import { soulTemplate } from './soul-template.js'
 
-/** Placeholder until a real agent image exists. */
-export const DEFAULT_IMAGE = 'alpine:3.20'
-export const DEFAULT_COMMAND = ['sleep', 'infinity']
 
 export function agentDir(id: string): string {
   return join(AGENTS_DIR, id)
@@ -24,8 +21,8 @@ export function createAgent(userId: string, name?: string, config?: Partial<Agen
     userId,
     name: name?.trim() || `${user.name}'s Agent`,
     config: {
-      image: config?.image ?? DEFAULT_IMAGE,
-      command: config?.command ?? [...DEFAULT_COMMAND],
+      image: config?.image ?? db.settings.docker.defaultImage,
+      command: config?.command ?? [...db.settings.docker.defaultCommand],
       env: config?.env ?? {},
     },
     createdAt: new Date().toISOString(),

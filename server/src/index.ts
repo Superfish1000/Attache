@@ -1,19 +1,41 @@
 import Fastify from 'fastify'
+import fastifyCookie from '@fastify/cookie'
 import fastifyStatic from '@fastify/static'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { db } from './store.js'
+import { SESSION_COOKIE, getSessionUser } from './auth.js'
+import authRoutes from './routes/auth.js'
 import userRoutes from './routes/users.js'
 import agentRoutes from './routes/agents.js'
 import o365Routes from './routes/o365.js'
 import mcpRoutes from './routes/mcp.js'
 import statusRoutes from './routes/status.js'
+import settingsRoutes from './routes/settings.js'
 
 const app = Fastify({ logger: true })
 
+await app.register(fastifyCookie)
+
+// everything under /api requires a session except health + auth endpoints
+app.addHook('onRequest', async (req, reply) => {
+  const url = req.url
+  if (!url.startsWith('/api/')) return
+  if (url === '/api/health' || url.startsWith('/api/auth/')) return
+  const token = req.cookies[SESSION_COOKIE]
+  const user = token ? getSessionUser(token) : null
+  if (!user) return reply.code(401).send({ error: 'unauthorized' })
+  req.user = user
+})
+
+app.get('/api/health', async () => ({ ok: true }))
+
+await app.register(authRoutes, { prefix: '/api/auth' })
 await app.register(userRoutes, { prefix: '/api/users' })
 await app.register(agentRoutes, { prefix: '/api/agents' })
 await app.register(o365Routes, { prefix: '/api/o365' })
 await app.register(mcpRoutes, { prefix: '/api/mcp' })
+await app.register(settingsRoutes, { prefix: '/api/settings' })
 await app.register(statusRoutes, { prefix: '/api' })
 
 // serve the built GUI when it exists (production); dev uses the Vite server
@@ -26,6 +48,8 @@ if (existsSync(webDist)) {
   })
 }
 
-// deliberately NOT process.env.PORT — preview/launch harnesses inject PORT for the web app
-const port = Number(process.env.ATTACHE_API_PORT ?? 7701)
-await app.listen({ port, host: '127.0.0.1' })
+// deliberately NOT process.env.PORT — preview/launch harnesses inject PORT for the web app.
+// env override > saved settings; host/port settings changes need a server restart.
+const port = Number(process.env.ATTACHE_API_PORT ?? db.settings.server.port)
+const host = process.env.ATTACHE_API_HOST ?? db.settings.server.host
+await app.listen({ port, host })

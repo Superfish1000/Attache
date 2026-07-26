@@ -1,11 +1,15 @@
 // Mirrors server/src/types.ts (+ API response shapes). Keep in sync until a shared package exists.
 
+export type Role = 'admin' | 'standard'
+
 export interface User {
   id: string
   name: string
   email: string
+  role: Role
   source: 'manual' | 'o365'
   o365Id?: string
+  hasPassword: boolean
   createdAt: string
 }
 
@@ -79,4 +83,16 @@ export interface McpStatus {
   endpoint: string | null
   note: string
   plannedTools: { name: string; description: string }[]
+}
+
+export interface SettingsView {
+  server: { host: string; port: number }
+  docker: { socketPath: string; defaultImage: string; defaultCommand: string[]; autoPull: boolean }
+  security: { sessionTtlHours: number }
+  dataDir: string
+}
+
+export interface MeResponse {
+  user: User | null
+  needsSetup: boolean
 }

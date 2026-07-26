@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { db, save } from '../store.js'
 import { listGroupMembers, o365Configured, syncGroup } from '../o365.js'
+import { requireAdmin } from '../auth.js'
 
 function maskedSettings() {
   const s = db.settings.o365
@@ -15,6 +16,10 @@ function maskedSettings() {
 }
 
 export default async function o365Routes(app: FastifyInstance) {
+  app.addHook('preHandler', async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply
+  })
+
   app.get('/settings', async () => maskedSettings())
 
   app.put('/settings', async (req) => {

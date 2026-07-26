@@ -2,12 +2,17 @@ import Docker from 'dockerode'
 import { resolve } from 'node:path'
 import type { Agent } from './types.js'
 import { agentDir } from './agents.js'
+import { db } from './store.js'
 
-const docker = new Docker() // win32 default: //./pipe/docker_engine
+/** Fresh handle per call so a settings change takes effect without a restart. Construction is cheap. */
+function getDocker(): Docker {
+  const socketPath = db.settings.docker.socketPath
+  return socketPath ? new Docker({ socketPath }) : new Docker() // win32 default: //./pipe/docker_engine
+}
 
 export async function dockerAvailable(): Promise<boolean> {
   try {
-    await docker.ping()
+    await getDocker().ping()
     return true
   } catch {
     return false
@@ -26,7 +31,7 @@ export interface ContainerInfo {
 
 export async function containerInfo(agentId: string): Promise<ContainerInfo> {
   try {
-    const insp = await docker.getContainer(nameFor(agentId)).inspect()
+    const insp = await getDocker().getContainer(nameFor(agentId)).inspect()
     return {
       exists: true,
       running: insp.State.Running,
@@ -40,12 +45,15 @@ export async function containerInfo(agentId: string): Promise<ContainerInfo> {
   }
 }
 
-async function pullIfMissing(image: string): Promise<void> {
+async function pullIfMissing(docker: Docker, image: string): Promise<void> {
   try {
     await docker.getImage(image).inspect()
     return
   } catch {
     // not present locally — pull below
+  }
+  if (!db.settings.docker.autoPull) {
+    throw new Error(`image '${image}' is not present locally and auto-pull is disabled`)
   }
   await new Promise<void>((resolvePull, reject) => {
     docker.pull(image, (err: unknown, stream: NodeJS.ReadableStream) => {
@@ -58,6 +66,7 @@ async function pullIfMissing(image: string): Promise<void> {
 }
 
 export async function startAgentContainer(agent: Agent): Promise<ContainerInfo> {
+  const docker = getDocker()
   const info = await containerInfo(agent.id)
   if (info.exists) {
     try {
@@ -67,7 +76,7 @@ export async function startAgentContainer(agent: Agent): Promise<ContainerInfo> 
     }
     return containerInfo(agent.id)
   }
-  await pullIfMissing(agent.config.image)
+  await pullIfMissing(docker, agent.config.image)
   const bindSrc = resolve(agentDir(agent.id)).replace(/\\/g, '/')
   const env = Object.entries({ AGENT_ID: agent.id, AGENT_NAME: agent.name, ...agent.config.env })
   const container = await docker.createContainer({
@@ -84,7 +93,7 @@ export async function startAgentContainer(agent: Agent): Promise<ContainerInfo> 
 
 export async function stopAgentContainer(agentId: string): Promise<ContainerInfo> {
   try {
-    await docker.getContainer(nameFor(agentId)).stop({ t: 5 })
+    await getDocker().getContainer(nameFor(agentId)).stop({ t: 5 })
   } catch (err) {
     const code = (err as { statusCode?: number }).statusCode
     if (code !== 304 && code !== 404) throw err // 304 = already stopped
@@ -94,7 +103,7 @@ export async function stopAgentContainer(agentId: string): Promise<ContainerInfo
 
 export async function removeAgentContainer(agentId: string): Promise<ContainerInfo> {
   try {
-    await docker.getContainer(nameFor(agentId)).remove({ force: true })
+    await getDocker().getContainer(nameFor(agentId)).remove({ force: true })
   } catch (err) {
     if ((err as { statusCode?: number }).statusCode !== 404) throw err
   }
@@ -111,7 +120,7 @@ export interface ManagedContainer {
 }
 
 export async function listManagedContainers(): Promise<ManagedContainer[]> {
-  const list = await docker.listContainers({
+  const list = await getDocker().listContainers({
     all: true,
     filters: { label: ['attache.managed=true'] },
   })

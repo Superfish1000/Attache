@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { db, save } from '../store.js'
 import { createAgent, deleteAgent, getSoul, putSoul } from '../agents.js'
 import {
@@ -8,12 +8,26 @@ import {
   startAgentContainer,
   stopAgentContainer,
 } from '../docker.js'
-import type { AgentConfig } from '../types.js'
+import { canAccessAgent, requireAdmin } from '../auth.js'
+import type { Agent, AgentConfig } from '../types.js'
 
 export default async function agentRoutes(app: FastifyInstance) {
-  app.get('/', async () => db.agents)
+  /** 404s (not 403) for foreign agents so ids aren't probeable. Returns null after replying. */
+  const accessibleAgent = (req: FastifyRequest, reply: FastifyReply): Agent | null => {
+    const agent = db.agents.find((a) => a.id === (req.params as { id: string }).id)
+    if (!agent || !canAccessAgent(req.user!, agent)) {
+      reply.code(404).send({ error: 'agent not found' })
+      return null
+    }
+    return agent
+  }
+
+  app.get('/', async (req) =>
+    req.user!.role === 'admin' ? db.agents : db.agents.filter((a) => a.userId === req.user!.id),
+  )
 
   app.post('/', async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply
     const { userId, name, config } = (req.body ?? {}) as {
       userId?: string
       name?: string
@@ -25,13 +39,10 @@ export default async function agentRoutes(app: FastifyInstance) {
     return reply.code(201).send(createAgent(userId, name, config))
   })
 
-  app.get('/:id', async (req, reply) => {
-    const agent = db.agents.find((a) => a.id === (req.params as { id: string }).id)
-    if (!agent) return reply.code(404).send({ error: 'agent not found' })
-    return agent
-  })
+  app.get('/:id', async (req, reply) => accessibleAgent(req, reply) ?? reply)
 
   app.patch('/:id', async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply
     const agent = db.agents.find((a) => a.id === (req.params as { id: string }).id)
     if (!agent) return reply.code(404).send({ error: 'agent not found' })
     const { name, config } = (req.body ?? {}) as { name?: string; config?: Partial<AgentConfig> }
@@ -58,6 +69,7 @@ export default async function agentRoutes(app: FastifyInstance) {
   })
 
   app.delete('/:id', async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply
     const { id } = req.params as { id: string }
     if (!db.agents.some((a) => a.id === id)) return reply.code(404).send({ error: 'agent not found' })
     try {
@@ -70,38 +82,39 @@ export default async function agentRoutes(app: FastifyInstance) {
   })
 
   app.get('/:id/soul', async (req, reply) => {
-    const { id } = req.params as { id: string }
-    if (!db.agents.some((a) => a.id === id)) return reply.code(404).send({ error: 'agent not found' })
-    return { content: getSoul(id) }
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    return { content: getSoul(agent.id) }
   })
 
   app.put('/:id/soul', async (req, reply) => {
-    const { id } = req.params as { id: string }
-    if (!db.agents.some((a) => a.id === id)) return reply.code(404).send({ error: 'agent not found' })
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
     const { content } = (req.body ?? {}) as { content?: string }
     if (typeof content !== 'string') return reply.code(400).send({ error: 'content (string) required' })
-    putSoul(id, content)
+    putSoul(agent.id, content)
     return { ok: true }
   })
 
   app.get('/:id/container', async (req, reply) => {
-    const { id } = req.params as { id: string }
-    if (!db.agents.some((a) => a.id === id)) return reply.code(404).send({ error: 'agent not found' })
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
     if (!(await dockerAvailable())) return { available: false, exists: false }
-    return { available: true, ...(await containerInfo(id)) }
+    return { available: true, ...(await containerInfo(agent.id)) }
   })
 
   app.post('/:id/container/:action', async (req, reply) => {
-    const { id, action } = req.params as { id: string; action: string }
-    const agent = db.agents.find((a) => a.id === id)
-    if (!agent) return reply.code(404).send({ error: 'agent not found' })
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    const { action } = req.params as { action: string }
+    if (action === 'remove' && !requireAdmin(req, reply)) return reply
     if (!(await dockerAvailable())) {
       return reply.code(503).send({ error: 'Docker daemon is not available' })
     }
     try {
       if (action === 'start') return { available: true, ...(await startAgentContainer(agent)) }
-      if (action === 'stop') return { available: true, ...(await stopAgentContainer(id)) }
-      if (action === 'remove') return { available: true, ...(await removeAgentContainer(id)) }
+      if (action === 'stop') return { available: true, ...(await stopAgentContainer(agent.id)) }
+      if (action === 'remove') return { available: true, ...(await removeAgentContainer(agent.id)) }
       return reply.code(400).send({ error: `unknown action '${action}' (start|stop|remove)` })
     } catch (err) {
       req.log.error(err)

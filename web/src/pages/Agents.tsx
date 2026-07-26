@@ -2,9 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { Chip, ErrorBanner } from '../components'
+import { useAuth } from '../auth'
 import type { Agent, ContainersResponse, User } from '../types'
 
 export default function Agents() {
+  const { user: me } = useAuth()
+  const admin = me?.role === 'admin'
   const [agents, setAgents] = useState<Agent[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [containers, setContainers] = useState<ContainersResponse | null>(null)
@@ -50,13 +53,21 @@ export default function Agents() {
 
   return (
     <>
-      <h1>Agents</h1>
-      <p className="subtitle">One agent per container — create them from the Users page</p>
+      <h1>{admin ? 'Agents' : 'My Agents'}</h1>
+      <p className="subtitle">
+        {admin ? 'One agent per container — create them from the Users page' : 'Your personal agents'}
+      </p>
       <ErrorBanner message={err} onDismiss={() => setErr('')} />
       <div className="panel">
         {agents.length === 0 ? (
           <div className="empty">
-            No agents yet. Create one from the <Link to="/users">Users</Link> page.
+            {admin ? (
+              <>
+                No agents yet. Create one from the <Link to="/users">Users</Link> page.
+              </>
+            ) : (
+              'No agents assigned to you yet — ask an administrator.'
+            )}
           </div>
         ) : (
           <table>

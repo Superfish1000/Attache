@@ -2,11 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { Chip, ErrorBanner, fmtDate } from '../components'
+import { useAuth } from '../auth'
 import type { Agent, ContainerState, User } from '../types'
 
 export default function AgentDetail() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
+  const { user: me } = useAuth()
+  const admin = me?.role === 'admin'
   const [agent, setAgent] = useState<Agent | null>(null)
   const [owner, setOwner] = useState<User | null>(null)
   const [container, setContainer] = useState<ContainerState | null>(null)
@@ -146,9 +149,15 @@ export default function AgentDetail() {
           <button className="btn" disabled={!dockerUp || busy} onClick={() => act('stop')}>
             Stop
           </button>
-          <button className="btn btn-danger" disabled={!dockerUp || busy} onClick={() => act('remove')}>
-            Remove container
-          </button>
+          {admin && (
+            <button
+              className="btn btn-danger"
+              disabled={!dockerUp || busy}
+              onClick={() => act('remove')}
+            >
+              Remove container
+            </button>
+          )}
         </div>
       </div>
 
@@ -168,30 +177,42 @@ export default function AgentDetail() {
 
       <h2>Configuration</h2>
       <div className="panel">
+        {!admin && (
+          <p className="muted" style={{ marginTop: 0 }}>
+            Configuration is managed by an administrator.
+          </p>
+        )}
         <div className="field">
           <label>Agent name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} />
+          <input value={name} disabled={!admin} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="field">
           <label>Container image</label>
-          <input value={image} onChange={(e) => setImage(e.target.value)} />
+          <input value={image} disabled={!admin} onChange={(e) => setImage(e.target.value)} />
         </div>
         <div className="field">
           <label>Command (space-separated)</label>
-          <input value={command} onChange={(e) => setCommand(e.target.value)} />
+          <input value={command} disabled={!admin} onChange={(e) => setCommand(e.target.value)} />
         </div>
         <div className="field">
           <label>Environment (JSON object)</label>
-          <textarea rows={5} value={envText} onChange={(e) => setEnvText(e.target.value)} />
+          <textarea
+            rows={5}
+            value={envText}
+            disabled={!admin}
+            onChange={(e) => setEnvText(e.target.value)}
+          />
         </div>
-        <div className="btn-row">
-          <button className="btn btn-primary" disabled={busy} onClick={saveConfig}>
-            Save config
-          </button>
-          <button className="btn btn-danger" disabled={busy} onClick={removeAgent}>
-            Delete agent
-          </button>
-        </div>
+        {admin && (
+          <div className="btn-row">
+            <button className="btn btn-primary" disabled={busy} onClick={saveConfig}>
+              Save config
+            </button>
+            <button className="btn btn-danger" disabled={busy} onClick={removeAgent}>
+              Delete agent
+            </button>
+          </div>
+        )}
       </div>
     </>
   )
