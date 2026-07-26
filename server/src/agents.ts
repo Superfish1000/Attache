@@ -1,8 +1,25 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { randomBytes } from 'node:crypto'
 import { AGENTS_DIR, db, newId, save } from './store.js'
 import type { Agent, AgentConfig } from './types.js'
 import { soulTemplate } from './soul-template.js'
+
+/** Sequential free host ports starting at settings.docker.portRangeStart. */
+function nextFreeHostPorts(count: number): number[] {
+  const used = new Set<number>()
+  for (const a of db.agents) for (const p of Object.values(a.config.ports)) used.add(p)
+  const out: number[] = []
+  let candidate = db.settings.docker.portRangeStart
+  while (out.length < count) {
+    if (!used.has(candidate)) {
+      out.push(candidate)
+      used.add(candidate)
+    }
+    candidate++
+  }
+  return out
+}
 
 
 export function agentDir(id: string): string {
@@ -16,14 +33,25 @@ function soulPath(id: string): string {
 export function createAgent(userId: string, name?: string, config?: Partial<AgentConfig>): Agent {
   const user = db.users.find((u) => u.id === userId)
   if (!user) throw new Error(`user ${userId} not found`)
+  const d = db.settings.docker
+  let ports = config?.ports
+  if (!ports) {
+    const hostPorts = nextFreeHostPorts(d.defaultContainerPorts.length)
+    ports = Object.fromEntries(d.defaultContainerPorts.map((cp, i) => [String(cp), hostPorts[i]]))
+  }
   const agent: Agent = {
     id: newId(),
     userId,
     name: name?.trim() || `${user.name}'s Agent`,
     config: {
-      image: config?.image ?? db.settings.docker.defaultImage,
-      command: config?.command ?? [...db.settings.docker.defaultCommand],
-      env: config?.env ?? {},
+      image: config?.image ?? d.defaultImage,
+      command: config?.command ?? [...d.defaultCommand],
+      // per-agent gateway auth token for the Hermes OpenAI-compatible API
+      env: config?.env ?? { API_SERVER_KEY: randomBytes(12).toString('hex') },
+      mountPath: config?.mountPath ?? d.defaultMountPath,
+      ports,
+      ...(config?.memoryMb !== undefined ? { memoryMb: config.memoryMb } : {}),
+      ...(config?.cpus !== undefined ? { cpus: config.cpus } : {}),
     },
     createdAt: new Date().toISOString(),
   }

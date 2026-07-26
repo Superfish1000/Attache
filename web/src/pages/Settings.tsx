@@ -11,6 +11,11 @@ export default function Settings() {
   const [defaultImage, setDefaultImage] = useState('')
   const [defaultCommand, setDefaultCommand] = useState('')
   const [autoPull, setAutoPull] = useState(true)
+  const [defaultMountPath, setDefaultMountPath] = useState('')
+  const [containerPorts, setContainerPorts] = useState('')
+  const [portRangeStart, setPortRangeStart] = useState('')
+  const [defaultEnvText, setDefaultEnvText] = useState('{}')
+  const [restartPolicy, setRestartPolicy] = useState<SettingsView['docker']['restartPolicy']>('unless-stopped')
   const [sessionTtl, setSessionTtl] = useState('')
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
@@ -24,6 +29,11 @@ export default function Settings() {
     setDefaultImage(s.docker.defaultImage)
     setDefaultCommand(s.docker.defaultCommand.join(' '))
     setAutoPull(s.docker.autoPull)
+    setDefaultMountPath(s.docker.defaultMountPath)
+    setContainerPorts(s.docker.defaultContainerPorts.join(', '))
+    setPortRangeStart(String(s.docker.portRangeStart))
+    setDefaultEnvText(JSON.stringify(s.docker.defaultEnv, null, 2))
+    setRestartPolicy(s.docker.restartPolicy)
     setSessionTtl(String(s.security.sessionTtlHours))
   }
 
@@ -39,6 +49,14 @@ export default function Settings() {
     setErr('')
     setNote('')
     try {
+      let defaultEnv: Record<string, string>
+      try {
+        const parsed = JSON.parse(defaultEnvText || '{}')
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error()
+        defaultEnv = Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, String(v)]))
+      } catch {
+        throw new Error('Default env must be a JSON object of key/value strings')
+      }
       const saved = await api.settings.save({
         server: { host: host.trim(), port: Number(port) },
         docker: {
@@ -46,6 +64,14 @@ export default function Settings() {
           defaultImage: defaultImage.trim(),
           defaultCommand: defaultCommand.split(/\s+/).filter(Boolean),
           autoPull,
+          defaultMountPath: defaultMountPath.trim(),
+          defaultContainerPorts: containerPorts
+            .split(/[,\s]+/)
+            .filter(Boolean)
+            .map(Number),
+          portRangeStart: Number(portRangeStart),
+          defaultEnv,
+          restartPolicy,
         },
         security: { sessionTtlHours: Number(sessionTtl) },
       })
@@ -98,6 +124,44 @@ export default function Settings() {
         <div className="field">
           <label>Default command (space-separated)</label>
           <input value={defaultCommand} onChange={(e) => setDefaultCommand(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Default data mount path (Hermes expects /opt/data)</label>
+          <input value={defaultMountPath} onChange={(e) => setDefaultMountPath(e.target.value)} />
+        </div>
+        <div className="form-row">
+          <div className="field">
+            <label>Auto-mapped container ports (comma-separated)</label>
+            <input
+              value={containerPorts}
+              onChange={(e) => setContainerPorts(e.target.value)}
+              placeholder="8642, 9119"
+            />
+          </div>
+          <div className="field">
+            <label>Host port range start</label>
+            <input value={portRangeStart} onChange={(e) => setPortRangeStart(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Restart policy</label>
+            <select
+              value={restartPolicy}
+              onChange={(e) => setRestartPolicy(e.target.value as SettingsView['docker']['restartPolicy'])}
+            >
+              <option value="no">no</option>
+              <option value="unless-stopped">unless-stopped</option>
+              <option value="on-failure">on-failure</option>
+              <option value="always">always</option>
+            </select>
+          </div>
+        </div>
+        <div className="field">
+          <label>Default env for all agents (JSON — put ANTHROPIC_API_KEY / OPENAI_API_KEY here)</label>
+          <textarea
+            rows={5}
+            value={defaultEnvText}
+            onChange={(e) => setDefaultEnvText(e.target.value)}
+          />
         </div>
         <label className="check-row">
           <input type="checkbox" checked={autoPull} onChange={(e) => setAutoPull(e.target.checked)} />

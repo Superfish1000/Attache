@@ -434,3 +434,17 @@ textarea:disabled {
   padding: 24px;
   text-align: center;
 }
+
+.logbox {
+  background: #0a0d12;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin: 12px 0 0;
+  max-height: 320px;
+  overflow: auto;
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

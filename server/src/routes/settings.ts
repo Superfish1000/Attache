@@ -22,6 +22,11 @@ export default async function settingsRoutes(app: FastifyInstance) {
         defaultImage: string
         defaultCommand: string[]
         autoPull: boolean
+        defaultMountPath: string
+        defaultContainerPorts: number[]
+        portRangeStart: number
+        defaultEnv: Record<string, string>
+        restartPolicy: string
       }>
       security: Partial<{ sessionTtlHours: number }>
     }>
@@ -54,6 +59,41 @@ export default async function settingsRoutes(app: FastifyInstance) {
         s.docker.defaultCommand = body.docker.defaultCommand
       }
       if (body.docker.autoPull !== undefined) s.docker.autoPull = Boolean(body.docker.autoPull)
+      if (body.docker.defaultMountPath !== undefined) {
+        const mp = String(body.docker.defaultMountPath).trim()
+        if (!mp.startsWith('/')) {
+          return reply.code(400).send({ error: 'defaultMountPath must be an absolute container path' })
+        }
+        s.docker.defaultMountPath = mp
+      }
+      if (body.docker.defaultContainerPorts !== undefined) {
+        const list = body.docker.defaultContainerPorts
+        if (!Array.isArray(list) || list.some((p) => !Number.isInteger(Number(p)) || Number(p) < 1 || Number(p) > 65535)) {
+          return reply.code(400).send({ error: 'defaultContainerPorts must be a list of ports' })
+        }
+        s.docker.defaultContainerPorts = list.map(Number)
+      }
+      if (body.docker.portRangeStart !== undefined) {
+        const p = Number(body.docker.portRangeStart)
+        if (!Number.isInteger(p) || p < 1024 || p > 65000) {
+          return reply.code(400).send({ error: 'portRangeStart must be between 1024 and 65000' })
+        }
+        s.docker.portRangeStart = p
+      }
+      if (body.docker.defaultEnv !== undefined) {
+        const e = body.docker.defaultEnv
+        if (typeof e !== 'object' || e === null || Array.isArray(e)) {
+          return reply.code(400).send({ error: 'defaultEnv must be an object of string values' })
+        }
+        s.docker.defaultEnv = Object.fromEntries(Object.entries(e).map(([k, v]) => [k, String(v)]))
+      }
+      if (body.docker.restartPolicy !== undefined) {
+        const rp = String(body.docker.restartPolicy)
+        if (!['no', 'unless-stopped', 'on-failure', 'always'].includes(rp)) {
+          return reply.code(400).send({ error: 'restartPolicy must be no|unless-stopped|on-failure|always' })
+        }
+        s.docker.restartPolicy = rp as typeof s.docker.restartPolicy
+      }
     }
     if (body.security?.sessionTtlHours !== undefined) {
       const ttl = Number(body.security.sessionTtlHours)

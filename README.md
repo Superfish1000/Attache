@@ -28,9 +28,15 @@ built GUI from `web/dist`.
 | `data/` | Runtime state (gitignored): `db.json` + `agents/{id}/SOUL.md` |
 | `docs/superpowers/specs/` | Design docs |
 
+## Agent runtime: Hermes
+
+Default agent image is [Hermes Agent](https://hermes-agent.nousresearch.com) (`nousresearch/hermes-agent:latest`, command `gateway run`). Attache mounts each agent's data dir at `/opt/data` — Hermes keeps `SOUL.md`, `.env`, `config.yaml`, `sessions/`, `memories/`, `skills/` there, so the soul you edit in the GUI is the one Hermes loads.
+
+Per agent, Attache auto-maps container port `8642` (OpenAI-compatible gateway) to a free host port from the configured range (default 18000+) and generates an `API_SERVER_KEY`. Put shared model credentials (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) in **Settings → Docker → Default env** — they apply to every agent container; per-agent env overrides.
+
 ## Notes
 
 - Docker daemon optional — container features report unavailable instead of failing.
-- Agent containers are placeholder `alpine` + `sleep infinity` until a real agent image exists; per-agent image/command/env overridable in the GUI.
+- Per-agent image/command/env/mount/ports/limits overridable in the GUI (Agent detail page).
 - O365 sync needs an Entra app registration (client-credentials) — tenant ID, client ID, secret, group ID entered on the Integrations page. Requires `GroupMember.Read.All` + `User.Read.All` application permissions.
 - MCP tool library is a stub (`/api/mcp/status`).

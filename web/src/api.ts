@@ -73,6 +73,7 @@ export const api = {
     saveSoul: (id: string, content: string) =>
       req<{ ok: boolean }>(`/api/agents/${id}/soul`, json('PUT', { content })),
     container: (id: string) => req<ContainerState>(`/api/agents/${id}/container`),
+    containerLogs: (id: string) => req<{ logs: string }>(`/api/agents/${id}/container/logs`),
     containerAction: (id: string, action: 'start' | 'stop' | 'remove') =>
       req<ContainerState>(`/api/agents/${id}/container/${action}`, { method: 'POST' }),
   },

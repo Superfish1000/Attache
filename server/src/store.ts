@@ -25,9 +25,14 @@ const defaults = (): DB => ({
     server: { host: '127.0.0.1', port: 7701 },
     docker: {
       socketPath: '',
-      defaultImage: 'alpine:3.20',
-      defaultCommand: ['sleep', 'infinity'],
+      defaultImage: 'nousresearch/hermes-agent:latest',
+      defaultCommand: ['gateway', 'run'],
       autoPull: true,
+      defaultMountPath: '/opt/data',
+      defaultContainerPorts: [8642],
+      portRangeStart: 18000,
+      defaultEnv: { API_SERVER_ENABLED: 'true', API_SERVER_HOST: '0.0.0.0' },
+      restartPolicy: 'unless-stopped',
     },
     security: { sessionTtlHours: 72 },
     lastO365Sync: null,
@@ -44,7 +49,17 @@ function load(): DB {
       ...u,
       role: u.role ?? 'standard',
     })),
-    agents: raw.agents ?? [],
+    // mountPath/ports backfill for agents created before container config grew
+    agents: (raw.agents ?? []).map(
+      (a: Omit<Agent, 'config'> & { config: Partial<Agent['config']> }) => ({
+        ...a,
+        config: {
+          ...a.config,
+          mountPath: a.config.mountPath ?? '/agent',
+          ports: a.config.ports ?? {},
+        } as Agent['config'],
+      }),
+    ),
     sessions: raw.sessions ?? [],
     settings: {
       ...d.settings,

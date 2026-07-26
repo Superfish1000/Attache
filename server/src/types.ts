@@ -20,10 +20,17 @@ export interface Session {
 }
 
 export interface AgentConfig {
-  /** Container image the agent runs in. Placeholder default until a real agent image exists. */
+  /** Container image the agent runs in (default: Hermes Agent). */
   image: string
   command: string[]
+  /** Per-agent env — merged over settings.docker.defaultEnv (agent wins). */
   env: Record<string, string>
+  /** Container path the agent's data dir is mounted at (Hermes expects /opt/data). */
+  mountPath: string
+  /** containerPort -> hostPort mappings (e.g. { "8642": 18000 }). */
+  ports: Record<string, number>
+  memoryMb?: number
+  cpus?: number
 }
 
 export interface Agent {
@@ -52,6 +59,15 @@ export interface DockerSettings {
   defaultImage: string
   defaultCommand: string[]
   autoPull: boolean
+  /** Container path new agents mount their data dir at. */
+  defaultMountPath: string
+  /** Container ports auto-mapped to host ports when an agent is created. */
+  defaultContainerPorts: number[]
+  /** First host port used when auto-assigning agent port mappings. */
+  portRangeStart: number
+  /** Env applied to every agent container (per-agent env overrides). */
+  defaultEnv: Record<string, string>
+  restartPolicy: 'no' | 'unless-stopped' | 'on-failure' | 'always'
 }
 
 export interface SecuritySettings {

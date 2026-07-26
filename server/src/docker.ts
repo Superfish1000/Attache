@@ -77,18 +77,57 @@ export async function startAgentContainer(agent: Agent): Promise<ContainerInfo> 
     return containerInfo(agent.id)
   }
   await pullIfMissing(docker, agent.config.image)
+  const cfg = agent.config
   const bindSrc = resolve(agentDir(agent.id)).replace(/\\/g, '/')
-  const env = Object.entries({ AGENT_ID: agent.id, AGENT_NAME: agent.name, ...agent.config.env })
+  const mountPath = cfg.mountPath || '/agent'
+  // settings-wide env first, per-agent env wins
+  const env = Object.entries({
+    AGENT_ID: agent.id,
+    AGENT_NAME: agent.name,
+    ...db.settings.docker.defaultEnv,
+    ...cfg.env,
+  })
+  const exposed: Record<string, object> = {}
+  const bindings: Record<string, Array<{ HostPort: string }>> = {}
+  for (const [containerPort, hostPort] of Object.entries(cfg.ports)) {
+    exposed[`${containerPort}/tcp`] = {}
+    bindings[`${containerPort}/tcp`] = [{ HostPort: String(hostPort) }]
+  }
   const container = await docker.createContainer({
     name: nameFor(agent.id),
-    Image: agent.config.image,
-    Cmd: agent.config.command,
+    Image: cfg.image,
+    Cmd: cfg.command,
     Env: env.map(([k, v]) => `${k}=${v}`),
     Labels: { 'attache.managed': 'true', 'attache.agent.id': agent.id },
-    HostConfig: { Binds: [`${bindSrc}:/agent`] },
+    ExposedPorts: exposed,
+    HostConfig: {
+      Binds: [`${bindSrc}:${mountPath}`],
+      PortBindings: bindings,
+      RestartPolicy: { Name: db.settings.docker.restartPolicy },
+      ...(cfg.memoryMb ? { Memory: cfg.memoryMb * 1024 * 1024 } : {}),
+      ...(cfg.cpus ? { NanoCpus: Math.round(cfg.cpus * 1e9) } : {}),
+    },
   })
   await container.start()
   return containerInfo(agent.id)
+}
+
+/** Tail of container output with docker's stream-multiplex headers stripped. */
+export async function containerLogs(agentId: string, tail = 200): Promise<string> {
+  const buf = (await getDocker()
+    .getContainer(nameFor(agentId))
+    .logs({ stdout: true, stderr: true, tail, follow: false })) as unknown as Buffer
+  if (buf.length === 0) return ''
+  // multiplexed frames: [type, 0, 0, 0, len(4BE), payload]; raw output if TTY
+  if (buf[1] !== 0 || buf[2] !== 0 || buf[3] !== 0) return buf.toString('utf8')
+  const parts: string[] = []
+  let off = 0
+  while (off + 8 <= buf.length) {
+    const len = buf.readUInt32BE(off + 4)
+    parts.push(buf.subarray(off + 8, off + 8 + len).toString('utf8'))
+    off += 8 + len
+  }
+  return parts.join('')
 }
 
 export async function stopAgentContainer(agentId: string): Promise<ContainerInfo> {

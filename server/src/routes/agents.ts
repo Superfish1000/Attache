@@ -3,6 +3,7 @@ import { db, save } from '../store.js'
 import { createAgent, deleteAgent, getSoul, putSoul } from '../agents.js'
 import {
   containerInfo,
+  containerLogs,
   dockerAvailable,
   removeAgentContainer,
   startAgentContainer,
@@ -63,6 +64,43 @@ export default async function agentRoutes(app: FastifyInstance) {
           Object.entries(config.env).map(([k, v]) => [k, String(v)]),
         )
       }
+      if (config.mountPath !== undefined) {
+        if (typeof config.mountPath !== 'string' || !config.mountPath.startsWith('/')) {
+          return reply.code(400).send({ error: 'config.mountPath must be an absolute container path' })
+        }
+        agent.config.mountPath = config.mountPath
+      }
+      if (config.ports !== undefined) {
+        if (typeof config.ports !== 'object' || config.ports === null || Array.isArray(config.ports)) {
+          return reply.code(400).send({ error: 'config.ports must map containerPort to hostPort' })
+        }
+        const ports: Record<string, number> = {}
+        for (const [cp, hp] of Object.entries(config.ports)) {
+          const cpN = Number(cp)
+          const hpN = Number(hp)
+          if (!Number.isInteger(cpN) || !Number.isInteger(hpN) || hpN < 1 || hpN > 65535 || cpN < 1 || cpN > 65535) {
+            return reply.code(400).send({ error: `invalid port mapping ${cp}:${String(hp)}` })
+          }
+          ports[String(cpN)] = hpN
+        }
+        agent.config.ports = ports
+      }
+      if (config.memoryMb !== undefined) {
+        const m = Number(config.memoryMb)
+        if (m && (!Number.isInteger(m) || m < 64)) {
+          return reply.code(400).send({ error: 'config.memoryMb must be an integer >= 64 (0 clears)' })
+        }
+        if (m) agent.config.memoryMb = m
+        else delete agent.config.memoryMb
+      }
+      if (config.cpus !== undefined) {
+        const c = Number(config.cpus)
+        if (c && (!Number.isFinite(c) || c <= 0 || c > 64)) {
+          return reply.code(400).send({ error: 'config.cpus must be > 0 and <= 64 (0 clears)' })
+        }
+        if (c) agent.config.cpus = c
+        else delete agent.config.cpus
+      }
     }
     save()
     return agent
@@ -101,6 +139,22 @@ export default async function agentRoutes(app: FastifyInstance) {
     if (!agent) return reply
     if (!(await dockerAvailable())) return { available: false, exists: false }
     return { available: true, ...(await containerInfo(agent.id)) }
+  })
+
+  app.get('/:id/container/logs', async (req, reply) => {
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    if (!(await dockerAvailable())) {
+      return reply.code(503).send({ error: 'Docker daemon is not available' })
+    }
+    try {
+      return { logs: await containerLogs(agent.id) }
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode === 404) {
+        return reply.code(404).send({ error: 'no container for this agent yet' })
+      }
+      throw err
+    }
   })
 
   app.post('/:id/container/:action', async (req, reply) => {

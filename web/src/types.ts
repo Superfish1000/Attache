@@ -17,6 +17,10 @@ export interface AgentConfig {
   image: string
   command: string[]
   env: Record<string, string>
+  mountPath: string
+  ports: Record<string, number>
+  memoryMb?: number
+  cpus?: number
 }
 
 export interface Agent {
@@ -87,7 +91,17 @@ export interface McpStatus {
 
 export interface SettingsView {
   server: { host: string; port: number }
-  docker: { socketPath: string; defaultImage: string; defaultCommand: string[]; autoPull: boolean }
+  docker: {
+    socketPath: string
+    defaultImage: string
+    defaultCommand: string[]
+    autoPull: boolean
+    defaultMountPath: string
+    defaultContainerPorts: number[]
+    portRangeStart: number
+    defaultEnv: Record<string, string>
+    restartPolicy: 'no' | 'unless-stopped' | 'on-failure' | 'always'
+  }
   security: { sessionTtlHours: number }
   dataDir: string
 }
