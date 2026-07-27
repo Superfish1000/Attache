@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { join, resolve, sep } from 'node:path'
+import { dirname, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { AGENTS_DIR, db, newId, save } from './store.js'
 import type { Agent, AgentConfig } from './types.js'
@@ -72,51 +72,59 @@ export function putSoul(id: string, content: string): void {
   writeFileSync(soulPath(id), content)
 }
 
-export interface AgentFileEntry {
-  name: string
-  dir: boolean
-  size: number
+/** Hermes doc files editable from the agent screen, alongside the soul. */
+export const AGENT_DOCS = {
+  memory: 'memories/MEMORY.md',
+  user: 'memories/USER.md',
+  agents: 'AGENTS.md',
+  tools: 'TOOLS.md',
+  hermes: '.hermes.md',
+} as const
+export type AgentDocName = keyof typeof AGENT_DOCS
+
+export function getDoc(id: string, doc: AgentDocName): string {
+  const p = join(agentDir(id), AGENT_DOCS[doc])
+  if (!existsSync(p)) return ''
+  return readFileSync(p, 'utf8')
 }
 
-/** Resolves rel inside the agent dir; throws on traversal escapes. */
-function safeAgentPath(agentId: string, rel: string): string {
-  const base = resolve(agentDir(agentId))
-  const p = resolve(base, rel || '.')
-  if (p !== base && !p.startsWith(base + sep)) throw new Error('path escapes the agent directory')
-  return p
+export function putDoc(id: string, doc: AgentDocName, content: string): void {
+  const p = join(agentDir(id), AGENT_DOCS[doc])
+  mkdirSync(dirname(p), { recursive: true })
+  writeFileSync(p, content)
 }
 
-export function listAgentFiles(agentId: string, rel: string): AgentFileEntry[] {
-  const dir = safeAgentPath(agentId, rel)
+/** Hermes cron job definitions — one YAML/JSON file per job under cron/. */
+const CRON_FILE_RE = /^[\w][\w.-]*$/
+
+function cronPath(id: string, file: string): string {
+  if (!CRON_FILE_RE.test(file)) throw new Error('invalid cron file name')
+  return join(agentDir(id), 'cron', file)
+}
+
+export function listCronJobs(id: string): string[] {
+  const dir = join(agentDir(id), 'cron')
   if (!existsSync(dir)) return []
   return readdirSync(dir)
-    .map((name) => {
+    .filter((f) => {
       try {
-        const st = statSync(join(dir, name))
-        return { name, dir: st.isDirectory(), size: st.size }
+        return statSync(join(dir, f)).isFile()
       } catch {
-        return null // races/permission oddities — skip entry
+        return false
       }
     })
-    .filter((e): e is AgentFileEntry => e !== null)
-    .sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name))
+    .sort()
 }
 
-const MAX_EDIT_BYTES = 1024 * 1024
-
-export function readAgentFile(agentId: string, rel: string): string {
-  const p = safeAgentPath(agentId, rel)
-  const st = statSync(p)
-  if (st.isDirectory()) throw new Error('that path is a directory')
-  if (st.size > MAX_EDIT_BYTES) throw new Error('file exceeds the 1MB edit cap')
-  const buf = readFileSync(p)
-  if (buf.includes(0)) throw new Error('binary file — not editable here')
-  return buf.toString('utf8')
+export function getCronJob(id: string, file: string): string {
+  const p = cronPath(id, file)
+  if (!existsSync(p)) return ''
+  return readFileSync(p, 'utf8')
 }
 
-export function writeAgentFile(agentId: string, rel: string, content: string): void {
-  const p = safeAgentPath(agentId, rel)
-  if (existsSync(p) && statSync(p).isDirectory()) throw new Error('that path is a directory')
+export function putCronJob(id: string, file: string, content: string): void {
+  const p = cronPath(id, file)
+  mkdirSync(dirname(p), { recursive: true })
   writeFileSync(p, content)
 }
 

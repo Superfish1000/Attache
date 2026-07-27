@@ -1,14 +1,18 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { db, save } from '../store.js'
 import {
+  AGENT_DOCS,
   createAgent,
   deleteAgent,
+  getCronJob,
+  getDoc,
   getSoul,
-  listAgentFiles,
+  listCronJobs,
+  putCronJob,
+  putDoc,
   putSoul,
-  readAgentFile,
-  writeAgentFile,
 } from '../agents.js'
+import type { AgentDocName } from '../agents.js'
 import {
   containerInfo,
   containerLogs,
@@ -142,43 +146,50 @@ export default async function agentRoutes(app: FastifyInstance) {
     return { ok: true }
   })
 
-  // agent data-dir file browser/editor (config.yaml, .env, memories/, skills/, ...) — admin only
-  app.get('/:id/files', async (req, reply) => {
-    if (!requireAdmin(req, reply)) return reply
+  // hermes doc files (memories/MEMORY.md, memories/USER.md) — owner-editable like the soul
+  app.get('/:id/doc/:name', async (req, reply) => {
     const agent = accessibleAgent(req, reply)
     if (!agent) return reply
-    const { path = '' } = req.query as { path?: string }
+    const { name } = req.params as { name: string }
+    if (!(name in AGENT_DOCS)) return reply.code(404).send({ error: 'unknown doc' })
+    return { content: getDoc(agent.id, name as AgentDocName) }
+  })
+
+  app.put('/:id/doc/:name', async (req, reply) => {
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    const { name } = req.params as { name: string }
+    if (!(name in AGENT_DOCS)) return reply.code(404).send({ error: 'unknown doc' })
+    const { content } = (req.body ?? {}) as { content?: string }
+    if (typeof content !== 'string') return reply.code(400).send({ error: 'content (string) required' })
+    putDoc(agent.id, name as AgentDocName, content)
+    return { ok: true }
+  })
+
+  // hermes cron jobs — one file per job under cron/
+  app.get('/:id/cron', async (req, reply) => {
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    return { jobs: listCronJobs(agent.id) }
+  })
+
+  app.get('/:id/cron/:file', async (req, reply) => {
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
     try {
-      return { entries: listAgentFiles(agent.id, path) }
+      return { content: getCronJob(agent.id, (req.params as { file: string }).file) }
     } catch (err) {
       return reply.code(400).send({ error: (err as Error).message })
     }
   })
 
-  app.get('/:id/file', async (req, reply) => {
-    if (!requireAdmin(req, reply)) return reply
+  app.put('/:id/cron/:file', async (req, reply) => {
     const agent = accessibleAgent(req, reply)
     if (!agent) return reply
-    const { path } = req.query as { path?: string }
-    if (!path) return reply.code(400).send({ error: 'path query param required' })
+    const { content } = (req.body ?? {}) as { content?: string }
+    if (typeof content !== 'string') return reply.code(400).send({ error: 'content (string) required' })
     try {
-      return { content: readAgentFile(agent.id, path) }
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code === 'ENOENT' ? 404 : 400
-      return reply.code(code).send({ error: (err as Error).message })
-    }
-  })
-
-  app.put('/:id/file', async (req, reply) => {
-    if (!requireAdmin(req, reply)) return reply
-    const agent = accessibleAgent(req, reply)
-    if (!agent) return reply
-    const { path, content } = (req.body ?? {}) as { path?: string; content?: string }
-    if (!path || typeof content !== 'string') {
-      return reply.code(400).send({ error: 'path and content (string) required' })
-    }
-    try {
-      writeAgentFile(agent.id, path, content)
+      putCronJob(agent.id, (req.params as { file: string }).file, content)
       return { ok: true }
     } catch (err) {
       return reply.code(400).send({ error: (err as Error).message })

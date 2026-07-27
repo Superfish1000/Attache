@@ -3,7 +3,17 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { Chip, ErrorBanner, fmtDate } from '../components'
 import { useAuth } from '../auth'
-import type { Agent, AgentFileEntry, ContainerState, User } from '../types'
+import type { Agent, ContainerState, User } from '../types'
+
+/** Hermes files editable from this screen; soul uses its own endpoint. */
+const DOCS = [
+  { key: 'soul', label: 'Soul', file: 'SOUL.md', hint: 'identity — system prompt slot #1' },
+  { key: 'memory', label: 'Memory', file: 'memories/MEMORY.md', hint: "the agent's long-term memory" },
+  { key: 'user', label: 'User profile', file: 'memories/USER.md', hint: 'what the agent knows about its user' },
+  { key: 'agents', label: 'Agents', file: 'AGENTS.md', hint: 'multi-agent coordination notes' },
+  { key: 'tools', label: 'Tools', file: 'TOOLS.md', hint: 'custom tool documentation' },
+  { key: 'hermes', label: 'Context', file: '.hermes.md', hint: 'project context — auto-loaded when present' },
+]
 
 export default function AgentDetail() {
   const { id = '' } = useParams()
@@ -21,20 +31,25 @@ export default function AgentDetail() {
   const [portsText, setPortsText] = useState('{}')
   const [memoryMb, setMemoryMb] = useState('')
   const [cpus, setCpus] = useState('')
-  const [soul, setSoul] = useState('')
+  const [docText, setDocText] = useState<Record<string, string>>({})
+  const [docLoaded, setDocLoaded] = useState<Record<string, boolean>>({})
+  const [cronJobs, setCronJobs] = useState<string[]>([])
+  const [cronSel, setCronSel] = useState('')
+  const [cronText, setCronText] = useState('')
   const [logs, setLogs] = useState<string | null>(null)
-  const [cwd, setCwd] = useState('')
-  const [entries, setEntries] = useState<AgentFileEntry[]>([])
-  const [openPath, setOpenPath] = useState<string | null>(null)
-  const [fileText, setFileText] = useState('')
-  const [newName, setNewName] = useState('')
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(() => {
-    Promise.all([api.agents.get(id), api.users.list(), api.agents.soul(id), api.agents.container(id)])
-      .then(([a, users, s, c]) => {
+    Promise.all([
+      api.agents.get(id),
+      api.users.list(),
+      api.agents.soul(id),
+      api.agents.container(id),
+      api.agents.cronJobs(id),
+    ])
+      .then(([a, users, s, c, cj]) => {
         setAgent(a)
         setOwner(users.find((u) => u.id === a.userId) ?? null)
         setName(a.name)
@@ -45,7 +60,9 @@ export default function AgentDetail() {
         setPortsText(JSON.stringify(a.config.ports))
         setMemoryMb(a.config.memoryMb ? String(a.config.memoryMb) : '')
         setCpus(a.config.cpus ? String(a.config.cpus) : '')
-        setSoul(s.content)
+        setDocText((t) => ({ ...t, soul: s.content }))
+        setDocLoaded((l) => ({ ...l, soul: true }))
+        setCronJobs(cj.jobs)
         setContainer(c)
       })
       .catch((e: Error) => setErr(e.message))
@@ -99,12 +116,25 @@ export default function AgentDetail() {
     }
   }
 
-  const saveSoul = async () => {
+  const loadDocContent = async (key: string) => {
+    if (docLoaded[key]) return
+    try {
+      const res = key === 'soul' ? await api.agents.soul(id) : await api.agents.doc(id, key)
+      setDocText((t) => ({ ...t, [key]: res.content }))
+      setDocLoaded((l) => ({ ...l, [key]: true }))
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
+  const saveDocContent = async (key: string, label: string) => {
     setBusy(true)
     setErr('')
     try {
-      await api.agents.saveSoul(id, soul)
-      flash('Soul saved')
+      const content = docText[key] ?? ''
+      if (key === 'soul') await api.agents.saveSoul(id, content)
+      else await api.agents.saveDoc(id, key, content)
+      flash(`${label} saved`)
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -135,54 +165,41 @@ export default function AgentDetail() {
     }
   }
 
-  const loadDir = async (path: string) => {
-    setErr('')
+  const selectCron = async (file: string) => {
+    setCronSel(file)
+    setCronText('')
+    if (!file) return
     try {
-      const res = await api.agents.files(id, path)
-      setCwd(path)
-      setEntries(res.entries)
+      setCronText((await api.agents.cronJob(id, file)).content)
     } catch (e) {
       setErr((e as Error).message)
     }
   }
 
-  useEffect(() => {
-    if (admin && agent) void loadDir('')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [admin, agent?.id])
-
-  const openFile = async (path: string) => {
-    setErr('')
-    try {
-      const res = await api.agents.readFile(id, path)
-      setOpenPath(path)
-      setFileText(res.content)
-    } catch (e) {
-      setErr((e as Error).message)
+  const newCronJob = () => {
+    const name = prompt('New cron job file name (e.g. daily-report.yaml):')
+    if (!name) return
+    if (!/^[\w][\w.-]*$/.test(name)) {
+      setErr('Job file names: letters, digits, dot, dash, underscore only')
+      return
     }
+    setCronSel(name)
+    setCronText('')
   }
 
-  const saveFile = async () => {
-    if (openPath === null) return
+  const saveCron = async () => {
+    if (!cronSel) return
     setBusy(true)
     setErr('')
     try {
-      await api.agents.writeFile(id, openPath, fileText)
-      flash(`Saved ${openPath}`)
-      void loadDir(cwd)
+      await api.agents.saveCronJob(id, cronSel, cronText)
+      flash(`cron/${cronSel} saved`)
+      setCronJobs((await api.agents.cronJobs(id)).jobs)
     } catch (e) {
       setErr((e as Error).message)
     } finally {
       setBusy(false)
     }
-  }
-
-  const createFile = () => {
-    const name = newName.trim()
-    if (!name || name.includes('/') || name.includes('\\')) return
-    setOpenPath(cwd ? `${cwd}/${name}` : name)
-    setFileText('')
-    setNewName('')
   }
 
   const removeAgent = async () => {
@@ -265,86 +282,76 @@ export default function AgentDetail() {
         {logs !== null && <pre className="logbox">{logs}</pre>}
       </div>
 
-      <h2>Soul file</h2>
+      <h2>Files</h2>
+      <p className="muted" style={{ margin: '0 0 10px' }}>
+        <span className="mono">data/agents/{agent.id}</span> — mounted into the container at{' '}
+        <span className="mono">{agent.config.mountPath}</span>
+      </p>
+      {DOCS.map((d) => (
+        <details
+          key={d.key}
+          className="doc-exp"
+          open={d.key === 'soul'}
+          onToggle={(e) => {
+            if ((e.currentTarget as HTMLDetailsElement).open) void loadDocContent(d.key)
+          }}
+        >
+          <summary>
+            <b>{d.label}</b> <span className="mono muted">{d.file}</span>
+            <span className="muted"> — {d.hint}</span>
+          </summary>
+          <div className="doc-body">
+            <textarea
+              rows={d.key === 'soul' ? 12 : 8}
+              value={docText[d.key] ?? ''}
+              onChange={(e) => setDocText((t) => ({ ...t, [d.key]: e.target.value }))}
+            />
+            <div className="btn-row" style={{ marginTop: 10 }}>
+              <button
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => saveDocContent(d.key, d.label)}
+              >
+                Save {d.label.toLowerCase()}
+              </button>
+            </div>
+          </div>
+        </details>
+      ))}
+
+      <h2>Cron jobs</h2>
       <div className="panel">
         <p className="muted" style={{ marginTop: 0 }}>
-          <span className="mono">data/agents/{agent.id}/SOUL.md</span> — mounted into the container at{' '}
-          <span className="mono">/agent</span>
+          Scheduled jobs the agent runs — one YAML/JSON file per job under{' '}
+          <span className="mono">cron/</span>.
         </p>
-        <textarea rows={14} value={soul} onChange={(e) => setSoul(e.target.value)} />
-        <div className="btn-row" style={{ marginTop: 10 }}>
-          <button className="btn btn-primary" disabled={busy} onClick={saveSoul}>
-            Save soul
+        <div className="form-row">
+          <select value={cronSel} onChange={(e) => void selectCron(e.target.value)}>
+            <option value="">{cronJobs.length ? '— select a job —' : '(no jobs yet)'}</option>
+            {cronJobs.map((j) => (
+              <option key={j} value={j}>
+                {j}
+              </option>
+            ))}
+          </select>
+          <button className="btn" onClick={newCronJob}>
+            New job
           </button>
         </div>
-      </div>
-
-      {admin && (
-        <>
-          <h2>Files</h2>
-          <div className="panel">
-            <p className="muted" style={{ marginTop: 0 }}>
-              Everything Hermes keeps in <span className="mono">/opt/data</span> — edit{' '}
-              <span className="mono">config.yaml</span>, <span className="mono">.env</span>, memories,
-              skills, cron jobs. <span className="mono">sessions/</span> and{' '}
-              <span className="mono">logs/</span> are system-managed.
+        {cronSel && (
+          <div style={{ marginTop: 12 }}>
+            <p className="mono muted" style={{ margin: '0 0 6px' }}>
+              cron/{cronSel}
             </p>
-            <div className="file-crumbs">
-              <button
-                className="btn"
-                disabled={!cwd}
-                onClick={() => void loadDir(cwd.split('/').slice(0, -1).join('/'))}
-              >
-                ↑ Up
-              </button>
-              <span className="mono muted">/{cwd}</span>
-              <span style={{ flex: 1 }} />
-              <input
-                placeholder="new-file.md"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                style={{ width: 160 }}
-              />
-              <button className="btn" disabled={!newName.trim()} onClick={createFile}>
-                New file
+            <textarea rows={8} value={cronText} onChange={(e) => setCronText(e.target.value)} />
+            <div className="btn-row" style={{ marginTop: 10 }}>
+              <button className="btn btn-primary" disabled={busy} onClick={saveCron}>
+                Save job
               </button>
             </div>
-            <div className="file-list">
-              {entries.length === 0 && <span className="muted">(empty)</span>}
-              {entries.map((e) => (
-                <button
-                  key={e.name}
-                  className={`file-item ${e.dir ? 'file-dir' : ''}`}
-                  onClick={() =>
-                    e.dir
-                      ? void loadDir(cwd ? `${cwd}/${e.name}` : e.name)
-                      : void openFile(cwd ? `${cwd}/${e.name}` : e.name)
-                  }
-                >
-                  {e.dir ? `${e.name}/` : e.name}
-                  {!e.dir && <span className="file-size">{e.size}</span>}
-                </button>
-              ))}
-            </div>
-            {openPath !== null && (
-              <div style={{ marginTop: 12 }}>
-                <p className="mono muted" style={{ margin: '0 0 6px' }}>
-                  {openPath}
-                </p>
-                <textarea rows={14} value={fileText} onChange={(e) => setFileText(e.target.value)} />
-                <div className="btn-row" style={{ marginTop: 10 }}>
-                  <button className="btn btn-primary" disabled={busy} onClick={saveFile}>
-                    Save file
-                  </button>
-                  <button className="btn" onClick={() => setOpenPath(null)}>
-                    Close
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
-        </>
-      )}
+        )}
+      </div>
 
       <h2>Configuration</h2>
       <div className="panel">

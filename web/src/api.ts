@@ -1,7 +1,6 @@
 import type {
   Agent,
   AgentConfig,
-  AgentFileEntry,
   ContainerState,
   ContainersResponse,
   McpStatus,
@@ -75,12 +74,14 @@ export const api = {
       req<{ ok: boolean }>(`/api/agents/${id}/soul`, json('PUT', { content })),
     container: (id: string) => req<ContainerState>(`/api/agents/${id}/container`),
     containerLogs: (id: string) => req<{ logs: string }>(`/api/agents/${id}/container/logs`),
-    files: (id: string, path: string) =>
-      req<{ entries: AgentFileEntry[] }>(`/api/agents/${id}/files?path=${encodeURIComponent(path)}`),
-    readFile: (id: string, path: string) =>
-      req<{ content: string }>(`/api/agents/${id}/file?path=${encodeURIComponent(path)}`),
-    writeFile: (id: string, path: string, content: string) =>
-      req<{ ok: boolean }>(`/api/agents/${id}/file`, json('PUT', { path, content })),
+    doc: (id: string, name: string) => req<{ content: string }>(`/api/agents/${id}/doc/${name}`),
+    saveDoc: (id: string, name: string, content: string) =>
+      req<{ ok: boolean }>(`/api/agents/${id}/doc/${name}`, json('PUT', { content })),
+    cronJobs: (id: string) => req<{ jobs: string[] }>(`/api/agents/${id}/cron`),
+    cronJob: (id: string, file: string) =>
+      req<{ content: string }>(`/api/agents/${id}/cron/${encodeURIComponent(file)}`),
+    saveCronJob: (id: string, file: string, content: string) =>
+      req<{ ok: boolean }>(`/api/agents/${id}/cron/${encodeURIComponent(file)}`, json('PUT', { content })),
     containerAction: (id: string, action: 'start' | 'stop' | 'remove') =>
       req<ContainerState>(`/api/agents/${id}/container/${action}`, { method: 'POST' }),
   },
