@@ -84,6 +84,11 @@ export const api = {
       req<{ ok: boolean }>(`/api/agents/${id}/cron/${encodeURIComponent(file)}`, json('PUT', { content })),
     containerAction: (id: string, action: 'start' | 'stop' | 'remove') =>
       req<ContainerState>(`/api/agents/${id}/container/${action}`, { method: 'POST' }),
+    regenerate: (id: string, resetFiles: boolean) =>
+      req<ContainerState & { filesReset: string[] }>(
+        `/api/agents/${id}/container/regenerate`,
+        json('POST', { resetFiles }),
+      ),
   },
   o365: {
     settings: () => req<O365SettingsView>('/api/o365/settings'),

@@ -2,12 +2,15 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { db, save } from '../store.js'
 import {
   agentFileDefs,
+  containerDefFor,
   createAgent,
   deleteAgent,
   getCronJob,
   listCronJobs,
   putCronJob,
   readAgentDoc,
+  resetAgentFiles,
+  syncAgentPorts,
   writeAgentDoc,
 } from '../agents.js'
 import {
@@ -227,6 +230,102 @@ export default async function agentRoutes(app: FastifyInstance) {
     }
   })
 
+  /** Remove + recreate + start in one step so env/port/definition changes apply. */
+  app.post('/:id/container/regenerate', async (req, reply) => {
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    const { resetFiles } = (req.body ?? {}) as { resetFiles?: boolean }
+    if (!(await dockerAvailable())) {
+      return reply.code(503).send({ error: 'Docker daemon is not available' })
+    }
+    try {
+      syncAgentPorts(agent)
+      await removeAgentContainer(agent.id)
+      const filesReset = resetFiles ? resetAgentFiles(agent) : []
+      const info = await startAgentContainer(agent)
+      return { available: true, ...info, filesReset }
+    } catch (err) {
+      req.log.error(err)
+      return reply.code(500).send({ error: `regenerate failed: ${(err as Error).message}` })
+    }
+  })
+
+  /** Proxy to the agent's OpenAI-compatible gateway — the GUI chat talks through here. */
+  app.post('/:id/chat', async (req, reply) => {
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    const { messages, model, stream } = (req.body ?? {}) as {
+      messages?: Array<{ role: string; content: string }>
+      model?: string
+      stream?: boolean
+    }
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return reply.code(400).send({ error: 'messages array required' })
+    }
+    const merged = {
+      ...db.settings.docker.defaultEnv,
+      ...(containerDefFor(agent)?.env ?? {}),
+      ...agent.config.env,
+    }
+    const gatewayPort = merged.API_SERVER_PORT ?? '8642'
+    const hostPort = agent.config.ports[gatewayPort] ?? Object.values(agent.config.ports)[0]
+    if (!hostPort) {
+      return reply.code(400).send({ error: 'no gateway port mapped for this agent' })
+    }
+    let upstream: Response
+    try {
+      upstream = await fetch(`http://127.0.0.1:${hostPort}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(merged.API_SERVER_KEY ? { authorization: `Bearer ${merged.API_SERVER_KEY}` } : {}),
+        },
+        body: JSON.stringify({
+          model: model || 'hermes',
+          messages: messages.map((m) => ({ role: m.role, content: String(m.content) })),
+          stream: Boolean(stream),
+        }),
+      })
+    } catch {
+      return reply
+        .code(502)
+        .send({ error: 'agent gateway unreachable — is the container running?' })
+    }
+    if (!stream || !upstream.ok || !upstream.body) {
+      const text = await upstream.text()
+      return reply
+        .code(upstream.status)
+        .header('content-type', upstream.headers.get('content-type') ?? 'application/json')
+        .send(text)
+    }
+    // hijack: from here the raw socket is ours — fastify must not try to reply on errors
+    reply.hijack()
+    reply.raw.writeHead(200, {
+      'content-type': upstream.headers.get('content-type') ?? 'text/event-stream',
+      'cache-control': 'no-cache',
+    })
+    const reader = upstream.body.getReader()
+    let clientGone = false
+    const onClose = () => {
+      clientGone = true
+      reader.cancel().catch(() => undefined) // stop the agent generating for a dead client
+    }
+    req.raw.on('close', onClose)
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done || clientGone) break
+        reply.raw.write(Buffer.from(value))
+      }
+    } catch {
+      // upstream died mid-stream (container stopped) — end with what we have
+    } finally {
+      req.raw.off('close', onClose)
+      if (!reply.raw.writableEnded) reply.raw.end()
+    }
+    return reply
+  })
+
   app.post('/:id/container/:action', async (req, reply) => {
     const agent = accessibleAgent(req, reply)
     if (!agent) return reply
@@ -236,7 +335,12 @@ export default async function agentRoutes(app: FastifyInstance) {
       return reply.code(503).send({ error: 'Docker daemon is not available' })
     }
     try {
-      if (action === 'start') return { available: true, ...(await startAgentContainer(agent)) }
+      if (action === 'start') {
+        // bindings only apply at container creation — syncing for an existing container
+        // would record mappings docker never made (use Regenerate to apply new ports)
+        if (!(await containerInfo(agent.id)).exists) syncAgentPorts(agent)
+        return { available: true, ...(await startAgentContainer(agent)) }
+      }
       if (action === 'stop') return { available: true, ...(await stopAgentContainer(agent.id)) }
       if (action === 'remove') return { available: true, ...(await removeAgentContainer(agent.id)) }
       return reply.code(400).send({ error: `unknown action '${action}' (start|stop|remove)` })

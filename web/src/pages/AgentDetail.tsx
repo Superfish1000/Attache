@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
-import { Chip, ErrorBanner, fmtDate } from '../components'
+import { Chip, EnvVarsHelp, ErrorBanner, InfoPopup, fmtDate } from '../components'
 import { useAuth } from '../auth'
 import type { Agent, AgentDocInfo, ContainerDef, ContainerState, User } from '../types'
 
@@ -29,6 +29,7 @@ export default function AgentDetail() {
   const [cronSel, setCronSel] = useState('')
   const [cronText, setCronText] = useState('')
   const [logs, setLogs] = useState<string | null>(null)
+  const [resetFiles, setResetFiles] = useState(false)
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -176,6 +177,32 @@ export default function AgentDetail() {
     }
   }
 
+  const regenerate = async () => {
+    if (
+      resetFiles &&
+      !confirm('Reset behavior files from templates? Current soul/memory content in templated files will be overwritten.')
+    ) {
+      return
+    }
+    setBusy(true)
+    setErr('')
+    try {
+      const res = await api.agents.regenerate(id, resetFiles)
+      setContainer(res)
+      flash(
+        res.filesReset.length
+          ? `Container regenerated · ${res.filesReset.length} file(s) reset from templates`
+          : 'Container regenerated',
+      )
+      setResetFiles(false)
+      load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const fetchLogs = async () => {
     setErr('')
     try {
@@ -287,6 +314,22 @@ export default function AgentDetail() {
           <button className="btn" disabled={!dockerUp || busy} onClick={() => act('stop')}>
             Stop
           </button>
+          <button
+            className="btn"
+            disabled={!dockerUp || busy}
+            title="Remove + recreate + start so env, port and definition changes apply. Uses the last SAVED config — press Save config first if you've edited it."
+            onClick={regenerate}
+          >
+            Regenerate
+          </button>
+          <label className="check-row" style={{ marginBottom: 0 }}>
+            <input
+              type="checkbox"
+              checked={resetFiles}
+              onChange={(e) => setResetFiles(e.target.checked)}
+            />
+            <span className="muted">also reset files from templates</span>
+          </label>
           <button className="btn" disabled={!dockerUp} onClick={fetchLogs}>
             {logs === null ? 'View logs' : 'Refresh logs'}
           </button>
@@ -335,7 +378,12 @@ export default function AgentDetail() {
           <input value={command} disabled={!admin} onChange={(e) => setCommand(e.target.value)} />
         </div>
         <div className="field">
-          <label>Environment (JSON object)</label>
+          <label>
+            Environment (JSON object){' '}
+            <InfoPopup title="Environment variables">
+              <EnvVarsHelp />
+            </InfoPopup>
+          </label>
           <textarea
             rows={5}
             value={envText}

@@ -32,7 +32,11 @@ built GUI from `web/dist`.
 
 Default agent image is [Hermes Agent](https://hermes-agent.nousresearch.com) (`nousresearch/hermes-agent:latest`, command `gateway run`). Attache mounts each agent's data dir at `/opt/data` — Hermes keeps `SOUL.md`, `.env`, `config.yaml`, `sessions/`, `memories/`, `skills/` there, so the soul you edit in the GUI is the one Hermes loads.
 
-Per agent, Attache auto-maps container port `8642` (OpenAI-compatible gateway) to a free host port from the configured range (default 18000+) and generates an `API_SERVER_KEY`. Put shared model credentials (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) in **Settings → Docker → Default env** — they apply to every agent container; per-agent env overrides.
+Container setups live under **Containers** as reusable definitions: image/command/mount/ports/limits/env plus the behavior-file list (with creation templates). Ports declared on a definition auto-map to free host ports (default range 18000+) at every deploy — no manual port bookkeeping. Env layers: Settings default env → definition env → per-agent env.
+
+Put shared model credentials (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) in **Settings → Docker → Default env**, then press **Regenerate** on each agent (recreates the container so env/port/definition changes apply; behavior files are untouched unless you tick *reset files from templates*). The ⓘ next to every env editor documents the variables.
+
+The **Chat** tab talks to any agent you own through its OpenAI-compatible gateway (Attache proxies with the per-agent `API_SERVER_KEY`; streaming, history kept per agent in your browser).
 
 ## Notes
 

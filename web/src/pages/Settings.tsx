@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import { ErrorBanner } from '../components'
+import { EnvVarsHelp, ErrorBanner, InfoPopup } from '../components'
 import type { SettingsView } from '../types'
 
 export default function Settings() {
@@ -125,7 +125,12 @@ export default function Settings() {
           </div>
         </div>
         <div className="field">
-          <label>Default env for all agents (JSON — put ANTHROPIC_API_KEY / OPENAI_API_KEY here)</label>
+          <label>
+            Default env for all agents (JSON — put ANTHROPIC_API_KEY / OPENAI_API_KEY here){' '}
+            <InfoPopup title="Environment variables">
+              <EnvVarsHelp />
+            </InfoPopup>
+          </label>
           <textarea
             rows={5}
             value={defaultEnvText}

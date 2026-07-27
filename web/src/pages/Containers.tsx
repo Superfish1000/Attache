@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
-import { Chip, ErrorBanner } from '../components'
+import { Chip, EnvVarsHelp, ErrorBanner, InfoPopup } from '../components'
 import type { Agent, ContainerDef, ContainerFileDef } from '../types'
 
 export default function Containers() {
@@ -230,7 +230,13 @@ export default function Containers() {
               </div>
             </div>
             <div className="field" style={{ marginTop: 14 }}>
-              <label>Definition env (JSON — baked into new agents)</label>
+              <label>
+                Definition env (JSON — applied to every agent container at start; per-agent env
+                overrides){' '}
+                <InfoPopup title="Environment variables">
+                  <EnvVarsHelp />
+                </InfoPopup>
+              </label>
               <textarea rows={4} value={envText} onChange={(e) => setEnvText(e.target.value)} />
             </div>
 

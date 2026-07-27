@@ -80,11 +80,13 @@ export async function startAgentContainer(agent: Agent): Promise<ContainerInfo> 
   const cfg = agent.config
   const bindSrc = resolve(agentDir(agent.id)).replace(/\\/g, '/')
   const mountPath = cfg.mountPath || '/agent'
-  // settings-wide env first, per-agent env wins
+  // env layers: universal settings -> container definition -> per-agent (agent wins)
+  const def = db.containers.find((c) => c.id === agent.containerId)
   const env = Object.entries({
     AGENT_ID: agent.id,
     AGENT_NAME: agent.name,
     ...db.settings.docker.defaultEnv,
+    ...(def?.env ?? {}),
     ...cfg.env,
   })
   const exposed: Record<string, object> = {}

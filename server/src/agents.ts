@@ -71,18 +71,48 @@ export function createAgent(
     createdAt: new Date().toISOString(),
   }
   mkdirSync(agentDir(agent.id), { recursive: true })
+  resetAgentFiles(agent)
+  db.agents.push(agent)
+  save()
+  return agent
+}
+
+/** (Re)writes this agent's templated behavior files from its definition. Returns paths written. */
+export function resetAgentFiles(agent: Agent): string[] {
+  const def = containerDefFor(agent)
+  const owner = db.users.find((u) => u.id === agent.userId)
+  const written: string[] = []
+  if (!def) return written
   for (const f of def.files) {
     if (!f.template || !isSafeRelPath(f.path)) continue
     const p = join(agentDir(agent.id), f.path)
     mkdirSync(dirname(p), { recursive: true })
     writeFileSync(
       p,
-      f.template.replaceAll('{{AGENT_NAME}}', agent.name).replaceAll('{{OWNER_NAME}}', user.name),
+      f.template
+        .replaceAll('{{AGENT_NAME}}', agent.name)
+        .replaceAll('{{OWNER_NAME}}', owner?.name ?? ''),
     )
+    written.push(f.path)
   }
-  db.agents.push(agent)
+  return written
+}
+
+/**
+ * Ensures every container port the definition declares has a host mapping,
+ * auto-assigning free host ports for missing ones. Returns true if anything changed.
+ */
+export function syncAgentPorts(agent: Agent): boolean {
+  const def = containerDefFor(agent)
+  if (!def) return false
+  const missing = def.containerPorts.filter((cp) => !(String(cp) in agent.config.ports))
+  if (missing.length === 0) return false
+  const hostPorts = nextFreeHostPorts(missing.length)
+  missing.forEach((cp, i) => {
+    agent.config.ports[String(cp)] = hostPorts[i]
+  })
   save()
-  return agent
+  return true
 }
 
 /** Behavior files this agent exposes, from its container definition. */

@@ -10,6 +10,7 @@ import Integrations from './pages/Integrations'
 import Tools from './pages/Tools'
 import Settings from './pages/Settings'
 import Containers from './pages/Containers'
+import Chat from './pages/Chat'
 import Login from './pages/Login'
 
 function Brand() {
@@ -46,6 +47,7 @@ function Shell() {
               Dashboard
             </NavLink>
           )}
+          <NavLink to="/chat">Chat</NavLink>
           {admin && <NavLink to="/users">Users</NavLink>}
           <NavLink to="/agents">{admin ? 'Agents' : 'My Agents'}</NavLink>
           {admin && <NavLink to="/containers">Containers</NavLink>}
@@ -75,6 +77,7 @@ function Shell() {
               </AdminRoute>
             }
           />
+          <Route path="/chat" element={<Chat />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/agents/:id" element={<AgentDetail />} />
           <Route
