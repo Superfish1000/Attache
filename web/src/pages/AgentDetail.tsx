@@ -3,17 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { Chip, ErrorBanner, fmtDate } from '../components'
 import { useAuth } from '../auth'
-import type { Agent, ContainerState, User } from '../types'
-
-/** Hermes files editable from this screen; soul uses its own endpoint. */
-const DOCS = [
-  { key: 'soul', label: 'Soul', file: 'SOUL.md', hint: 'identity — system prompt slot #1' },
-  { key: 'memory', label: 'Memory', file: 'memories/MEMORY.md', hint: "the agent's long-term memory" },
-  { key: 'user', label: 'User profile', file: 'memories/USER.md', hint: 'what the agent knows about its user' },
-  { key: 'agents', label: 'Agents', file: 'AGENTS.md', hint: 'multi-agent coordination notes' },
-  { key: 'tools', label: 'Tools', file: 'TOOLS.md', hint: 'custom tool documentation' },
-  { key: 'hermes', label: 'Context', file: '.hermes.md', hint: 'project context — auto-loaded when present' },
-]
+import type { Agent, AgentDocInfo, ContainerDef, ContainerState, User } from '../types'
 
 export default function AgentDetail() {
   const { id = '' } = useParams()
@@ -31,8 +21,10 @@ export default function AgentDetail() {
   const [portsText, setPortsText] = useState('{}')
   const [memoryMb, setMemoryMb] = useState('')
   const [cpus, setCpus] = useState('')
+  const [docs, setDocs] = useState<AgentDocInfo[]>([])
   const [docText, setDocText] = useState<Record<string, string>>({})
   const [docLoaded, setDocLoaded] = useState<Record<string, boolean>>({})
+  const [defs, setDefs] = useState<ContainerDef[]>([])
   const [cronJobs, setCronJobs] = useState<string[]>([])
   const [cronSel, setCronSel] = useState('')
   const [cronText, setCronText] = useState('')
@@ -45,11 +37,11 @@ export default function AgentDetail() {
     Promise.all([
       api.agents.get(id),
       api.users.list(),
-      api.agents.soul(id),
+      api.agents.docs(id),
       api.agents.container(id),
       api.agents.cronJobs(id),
     ])
-      .then(([a, users, s, c, cj]) => {
+      .then(([a, users, docsRes, c, cj]) => {
         setAgent(a)
         setOwner(users.find((u) => u.id === a.userId) ?? null)
         setName(a.name)
@@ -60,8 +52,19 @@ export default function AgentDetail() {
         setPortsText(JSON.stringify(a.config.ports))
         setMemoryMb(a.config.memoryMb ? String(a.config.memoryMb) : '')
         setCpus(a.config.cpus ? String(a.config.cpus) : '')
-        setDocText((t) => ({ ...t, soul: s.content }))
-        setDocLoaded((l) => ({ ...l, soul: true }))
+        setDocs(docsRes.docs)
+        setDocLoaded({})
+        setDocText({})
+        if (docsRes.docs[0]) {
+          const first = docsRes.docs[0].key
+          api.agents
+            .doc(id, first)
+            .then((res) => {
+              setDocText((t) => ({ ...t, [first]: res.content }))
+              setDocLoaded((l) => ({ ...l, [first]: true }))
+            })
+            .catch(() => undefined)
+        }
         setCronJobs(cj.jobs)
         setContainer(c)
       })
@@ -119,7 +122,7 @@ export default function AgentDetail() {
   const loadDocContent = async (key: string) => {
     if (docLoaded[key]) return
     try {
-      const res = key === 'soul' ? await api.agents.soul(id) : await api.agents.doc(id, key)
+      const res = await api.agents.doc(id, key)
       setDocText((t) => ({ ...t, [key]: res.content }))
       setDocLoaded((l) => ({ ...l, [key]: true }))
     } catch (e) {
@@ -131,14 +134,32 @@ export default function AgentDetail() {
     setBusy(true)
     setErr('')
     try {
-      const content = docText[key] ?? ''
-      if (key === 'soul') await api.agents.saveSoul(id, content)
-      else await api.agents.saveDoc(id, key, content)
+      await api.agents.saveDoc(id, key, docText[key] ?? '')
       flash(`${label} saved`)
     } catch (e) {
       setErr((e as Error).message)
     } finally {
       setBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    if (admin) {
+      api.containerDefs
+        .list()
+        .then((res) => setDefs(res.defs))
+        .catch(() => undefined)
+    }
+  }, [admin])
+
+  const switchDef = async (containerId: string) => {
+    setErr('')
+    try {
+      await api.agents.update(id, { containerId })
+      flash('Container definition switched')
+      load()
+    } catch (e) {
+      setErr((e as Error).message)
     }
   }
 
@@ -287,22 +308,25 @@ export default function AgentDetail() {
         <span className="mono">data/agents/{agent.id}</span> — mounted into the container at{' '}
         <span className="mono">{agent.config.mountPath}</span>
       </p>
-      {DOCS.map((d) => (
+      {docs.length === 0 && (
+        <div className="panel muted">No behavior files configured for this container definition.</div>
+      )}
+      {docs.map((d, i) => (
         <details
           key={d.key}
           className="doc-exp"
-          open={d.key === 'soul'}
+          open={i === 0}
           onToggle={(e) => {
             if ((e.currentTarget as HTMLDetailsElement).open) void loadDocContent(d.key)
           }}
         >
           <summary>
-            <b>{d.label}</b> <span className="mono muted">{d.file}</span>
-            <span className="muted"> — {d.hint}</span>
+            <b>{d.label}</b> <span className="mono muted">{d.path}</span>
+            {d.hint && <span className="muted"> — {d.hint}</span>}
           </summary>
           <div className="doc-body">
             <textarea
-              rows={d.key === 'soul' ? 12 : 8}
+              rows={i === 0 ? 12 : 8}
               value={docText[d.key] ?? ''}
               onChange={(e) => setDocText((t) => ({ ...t, [d.key]: e.target.value }))}
             />
@@ -359,6 +383,18 @@ export default function AgentDetail() {
           <p className="muted" style={{ marginTop: 0 }}>
             Configuration is managed by an administrator.
           </p>
+        )}
+        {admin && defs.length > 0 && (
+          <div className="field">
+            <label>Container definition (drives the file list above)</label>
+            <select value={agent.containerId} onChange={(e) => void switchDef(e.target.value)}>
+              {defs.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.image})
+                </option>
+              ))}
+            </select>
+          </div>
         )}
         <div className="field">
           <label>Agent name</label>

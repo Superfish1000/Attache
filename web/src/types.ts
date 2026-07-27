@@ -27,8 +27,38 @@ export interface Agent {
   id: string
   userId: string
   name: string
+  containerId: string
   config: AgentConfig
   createdAt: string
+}
+
+export interface ContainerFileDef {
+  key: string
+  label: string
+  path: string
+  hint: string
+  template: string
+}
+
+export interface ContainerDef {
+  id: string
+  name: string
+  image: string
+  command: string[]
+  env: Record<string, string>
+  mountPath: string
+  containerPorts: number[]
+  memoryMb?: number
+  cpus?: number
+  files: ContainerFileDef[]
+  createdAt: string
+}
+
+export interface AgentDocInfo {
+  key: string
+  label: string
+  path: string
+  hint: string
 }
 
 export interface StatusResponse {
@@ -93,14 +123,11 @@ export interface SettingsView {
   server: { host: string; port: number }
   docker: {
     socketPath: string
-    defaultImage: string
-    defaultCommand: string[]
     autoPull: boolean
-    defaultMountPath: string
-    defaultContainerPorts: number[]
     portRangeStart: number
     defaultEnv: Record<string, string>
     restartPolicy: 'no' | 'unless-stopped' | 'on-failure' | 'always'
+    defaultContainerId: string
   }
   security: { sessionTtlHours: number }
   dataDir: string

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import type { Agent, Session, Settings, User } from './types.js'
+import type { Agent, ContainerDef, Session, Settings, User } from './types.js'
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 export const DATA_DIR = process.env.ATTACHE_DATA_DIR ?? join(ROOT, 'data')
@@ -12,47 +12,104 @@ const DB_FILE = join(DATA_DIR, 'db.json')
 interface DB {
   users: User[]
   agents: Agent[]
+  containers: ContainerDef[]
   sessions: Session[]
   settings: Settings
 }
 
+const SOUL_TEMPLATE = `# {{AGENT_NAME}}
+
+## Identity
+
+Agent for {{OWNER_NAME}}. Describe who this agent is, its voice, and its purpose.
+
+## Directives
+
+- Serve your user's goals; ask before irreversible actions.
+- Keep your user's data private.
+
+## Capabilities
+
+Tools and integrations this agent may use. (Shared tool library via MCP — coming soon.)
+
+## Memory
+
+Long-lived notes the agent maintains about its user and work.
+`
+
+/** File set for the migrated/default Hermes definition. */
+const HERMES_FILES = [
+  { key: 'soul', label: 'Soul', path: 'SOUL.md', hint: 'identity — system prompt slot #1', template: SOUL_TEMPLATE },
+  { key: 'memory', label: 'Memory', path: 'memories/MEMORY.md', hint: "the agent's long-term memory", template: '' },
+  { key: 'user', label: 'User profile', path: 'memories/USER.md', hint: 'what the agent knows about its user', template: '' },
+  { key: 'agents', label: 'Agents', path: 'AGENTS.md', hint: 'multi-agent coordination notes', template: '' },
+  { key: 'tools', label: 'Tools', path: 'TOOLS.md', hint: 'custom tool documentation', template: '' },
+  { key: 'hermes', label: 'Context', path: '.hermes.md', hint: 'project context — auto-loaded when present', template: '' },
+]
+
 const defaults = (): DB => ({
   users: [],
   agents: [],
+  containers: [],
   sessions: [],
   settings: {
     o365: { tenantId: '', clientId: '', clientSecret: '', groupId: '' },
     server: { host: '127.0.0.1', port: 7701 },
     docker: {
       socketPath: '',
-      defaultImage: 'nousresearch/hermes-agent:latest',
-      defaultCommand: ['gateway', 'run'],
       autoPull: true,
-      defaultMountPath: '/opt/data',
-      defaultContainerPorts: [8642],
       portRangeStart: 18000,
       defaultEnv: { API_SERVER_ENABLED: 'true', API_SERVER_HOST: '0.0.0.0' },
       restartPolicy: 'unless-stopped',
+      defaultContainerId: '',
     },
     security: { sessionTtlHours: 72 },
     lastO365Sync: null,
   },
 })
 
-function load(): DB {
-  if (!existsSync(DB_FILE)) return defaults()
-  const raw = JSON.parse(readFileSync(DB_FILE, 'utf8'))
+function load(): { db: DB; migrated: boolean } {
   const d = defaults()
-  return {
+  if (!existsSync(DB_FILE)) return { db: d, migrated: false }
+  const raw = JSON.parse(readFileSync(DB_FILE, 'utf8'))
+  const rd = raw.settings?.docker ?? {}
+
+  // migrate pre-definition DBs: fold the old settings.docker defaults into a Hermes definition
+  let containers: ContainerDef[] = raw.containers ?? []
+  let defaultContainerId: string = rd.defaultContainerId ?? ''
+  let migrated = false
+  if (containers.length === 0) {
+    const def: ContainerDef = {
+      id: randomUUID().split('-')[0],
+      name: 'Hermes',
+      image: rd.defaultImage ?? 'nousresearch/hermes-agent:latest',
+      command: rd.defaultCommand ?? ['gateway', 'run'],
+      env: {},
+      mountPath: rd.defaultMountPath ?? '/opt/data',
+      containerPorts: rd.defaultContainerPorts ?? [8642],
+      files: HERMES_FILES.map((f) => ({ ...f })),
+      createdAt: new Date().toISOString(),
+    }
+    containers = [def]
+    defaultContainerId = def.id
+    migrated = true
+  }
+  if (!defaultContainerId && containers[0]) defaultContainerId = containers[0].id
+
+  const db: DB = {
     // role backfill for records written before auth existed
     users: (raw.users ?? []).map((u: Omit<User, 'role'> & { role?: User['role'] }) => ({
       ...u,
       role: u.role ?? 'standard',
     })),
-    // mountPath/ports backfill for agents created before container config grew
+    // config + containerId backfill for agents created before container definitions
     agents: (raw.agents ?? []).map(
-      (a: Omit<Agent, 'config'> & { config: Partial<Agent['config']> }) => ({
+      (a: Omit<Agent, 'config' | 'containerId'> & {
+        config: Partial<Agent['config']>
+        containerId?: string
+      }) => ({
         ...a,
+        containerId: a.containerId ?? defaultContainerId,
         config: {
           ...a.config,
           mountPath: a.config.mountPath ?? '/agent',
@@ -60,19 +117,31 @@ function load(): DB {
         } as Agent['config'],
       }),
     ),
+    containers,
     sessions: raw.sessions ?? [],
     settings: {
       ...d.settings,
-      ...(raw.settings ?? {}),
       o365: { ...d.settings.o365, ...(raw.settings?.o365 ?? {}) },
       server: { ...d.settings.server, ...(raw.settings?.server ?? {}) },
-      docker: { ...d.settings.docker, ...(raw.settings?.docker ?? {}) },
+      docker: {
+        socketPath: rd.socketPath ?? '',
+        autoPull: rd.autoPull ?? true,
+        portRangeStart: rd.portRangeStart ?? 18000,
+        defaultEnv: rd.defaultEnv ?? d.settings.docker.defaultEnv,
+        restartPolicy: rd.restartPolicy ?? 'unless-stopped',
+        defaultContainerId,
+      },
       security: { ...d.settings.security, ...(raw.settings?.security ?? {}) },
+      lastO365Sync: raw.settings?.lastO365Sync ?? null,
     },
   }
+  return { db, migrated }
 }
 
-export const db: DB = load()
+const loaded = load()
+export const db: DB = loaded.db
+// persist the migration immediately so definition ids stay stable across restarts
+if (loaded.migrated) save()
 
 /** Atomic write: tmp file + rename. Single-process tool, sync IO is fine. */
 export function save(): void {
@@ -84,7 +153,11 @@ export function save(): void {
 
 export function newId(): string {
   let id = randomUUID().split('-')[0]
-  while (db.users.some((u) => u.id === id) || db.agents.some((a) => a.id === id)) {
+  while (
+    db.users.some((u) => u.id === id) ||
+    db.agents.some((a) => a.id === id) ||
+    db.containers.some((c) => c.id === id)
+  ) {
     id = randomUUID().split('-')[0]
   }
   return id

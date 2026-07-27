@@ -9,6 +9,7 @@ import AgentDetail from './pages/AgentDetail'
 import Integrations from './pages/Integrations'
 import Tools from './pages/Tools'
 import Settings from './pages/Settings'
+import Containers from './pages/Containers'
 import Login from './pages/Login'
 
 function Brand() {
@@ -47,6 +48,7 @@ function Shell() {
           )}
           {admin && <NavLink to="/users">Users</NavLink>}
           <NavLink to="/agents">{admin ? 'Agents' : 'My Agents'}</NavLink>
+          {admin && <NavLink to="/containers">Containers</NavLink>}
           {admin && <NavLink to="/integrations">Integrations</NavLink>}
           <NavLink to="/tools">Tools</NavLink>
           {admin && <NavLink to="/settings">Settings</NavLink>}
@@ -75,6 +77,14 @@ function Shell() {
           />
           <Route path="/agents" element={<Agents />} />
           <Route path="/agents/:id" element={<AgentDetail />} />
+          <Route
+            path="/containers"
+            element={
+              <AdminRoute>
+                <Containers />
+              </AdminRoute>
+            }
+          />
           <Route
             path="/integrations"
             element={

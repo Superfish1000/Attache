@@ -1,6 +1,8 @@
 import type {
   Agent,
   AgentConfig,
+  AgentDocInfo,
+  ContainerDef,
   ContainerState,
   ContainersResponse,
   McpStatus,
@@ -64,14 +66,12 @@ export const api = {
   agents: {
     list: () => req<Agent[]>('/api/agents'),
     get: (id: string) => req<Agent>(`/api/agents/${id}`),
-    create: (userId: string, name?: string) =>
-      req<Agent>('/api/agents', json('POST', { userId, name })),
-    update: (id: string, patch: { name?: string; config?: Partial<AgentConfig> }) =>
+    create: (userId: string, name?: string, containerId?: string) =>
+      req<Agent>('/api/agents', json('POST', { userId, name, containerId })),
+    update: (id: string, patch: { name?: string; containerId?: string; config?: Partial<AgentConfig> }) =>
       req<Agent>(`/api/agents/${id}`, json('PATCH', patch)),
     remove: (id: string) => req<void>(`/api/agents/${id}`, { method: 'DELETE' }),
-    soul: (id: string) => req<{ content: string }>(`/api/agents/${id}/soul`),
-    saveSoul: (id: string, content: string) =>
-      req<{ ok: boolean }>(`/api/agents/${id}/soul`, json('PUT', { content })),
+    docs: (id: string) => req<{ docs: AgentDocInfo[] }>(`/api/agents/${id}/docs`),
     container: (id: string) => req<ContainerState>(`/api/agents/${id}/container`),
     containerLogs: (id: string) => req<{ logs: string }>(`/api/agents/${id}/container/logs`),
     doc: (id: string, name: string) => req<{ content: string }>(`/api/agents/${id}/doc/${name}`),
@@ -91,6 +91,16 @@ export const api = {
       req<O365SettingsView>('/api/o365/settings', json('PUT', s)),
     preview: () => req<O365Member[]>('/api/o365/preview'),
     sync: () => req<SyncResult>('/api/o365/sync', { method: 'POST' }),
+  },
+  containerDefs: {
+    list: () => req<{ defs: ContainerDef[]; defaultId: string }>('/api/container-defs'),
+    create: (body: Partial<ContainerDef>) =>
+      req<ContainerDef>('/api/container-defs', json('POST', body)),
+    update: (id: string, patch: Partial<ContainerDef>) =>
+      req<ContainerDef>(`/api/container-defs/${id}`, json('PATCH', patch)),
+    setDefault: (id: string) =>
+      req<{ ok: boolean }>(`/api/container-defs/${id}/default`, { method: 'PUT' }),
+    remove: (id: string) => req<void>(`/api/container-defs/${id}`, { method: 'DELETE' }),
   },
   settings: {
     get: () => req<SettingsView>('/api/settings'),

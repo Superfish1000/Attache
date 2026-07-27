@@ -33,10 +33,41 @@ export interface AgentConfig {
   cpus?: number
 }
 
+/** A behavior file managed on the agent screen, defined per container definition. */
+export interface ContainerFileDef {
+  /** Slug used in URLs and as the editor id. */
+  key: string
+  label: string
+  /** Path relative to the agent data dir (no leading slash, no '..'). */
+  path: string
+  hint: string
+  /** Default content written at agent creation; {{AGENT_NAME}} / {{OWNER_NAME}} substituted. Empty = don't create. */
+  template: string
+}
+
+/** A reusable container setup: image/runtime defaults + the behavior files agents expose. */
+export interface ContainerDef {
+  id: string
+  name: string
+  image: string
+  command: string[]
+  /** Definition-level env baked into new agents' config (per-agent env can override later). */
+  env: Record<string, string>
+  mountPath: string
+  /** Container ports auto-mapped to host ports when an agent is created. */
+  containerPorts: number[]
+  memoryMb?: number
+  cpus?: number
+  files: ContainerFileDef[]
+  createdAt: string
+}
+
 export interface Agent {
   id: string
   userId: string
   name: string
+  /** Which container definition this agent was created from (drives its file list). */
+  containerId: string
   config: AgentConfig
   createdAt: string
 }
@@ -53,21 +84,18 @@ export interface ServerSettings {
   port: number
 }
 
+/** Universal docker configuration — daemon-level details shared by every container. */
 export interface DockerSettings {
   /** Empty string = platform default (named pipe on Windows, unix socket elsewhere) */
   socketPath: string
-  defaultImage: string
-  defaultCommand: string[]
   autoPull: boolean
-  /** Container path new agents mount their data dir at. */
-  defaultMountPath: string
-  /** Container ports auto-mapped to host ports when an agent is created. */
-  defaultContainerPorts: number[]
   /** First host port used when auto-assigning agent port mappings. */
   portRangeStart: number
   /** Env applied to every agent container (per-agent env overrides). */
   defaultEnv: Record<string, string>
   restartPolicy: 'no' | 'unless-stopped' | 'on-failure' | 'always'
+  /** Container definition used for new agents unless one is chosen explicitly. */
+  defaultContainerId: string
 }
 
 export interface SecuritySettings {

@@ -1,18 +1,15 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { db, save } from '../store.js'
 import {
-  AGENT_DOCS,
+  agentFileDefs,
   createAgent,
   deleteAgent,
   getCronJob,
-  getDoc,
-  getSoul,
   listCronJobs,
   putCronJob,
-  putDoc,
-  putSoul,
+  readAgentDoc,
+  writeAgentDoc,
 } from '../agents.js'
-import type { AgentDocName } from '../agents.js'
 import {
   containerInfo,
   containerLogs,
@@ -41,15 +38,23 @@ export default async function agentRoutes(app: FastifyInstance) {
 
   app.post('/', async (req, reply) => {
     if (!requireAdmin(req, reply)) return reply
-    const { userId, name, config } = (req.body ?? {}) as {
+    const { userId, name, containerId, config } = (req.body ?? {}) as {
       userId?: string
       name?: string
+      containerId?: string
       config?: Partial<AgentConfig>
     }
     if (!userId || !db.users.some((u) => u.id === userId)) {
       return reply.code(400).send({ error: 'valid userId is required' })
     }
-    return reply.code(201).send(createAgent(userId, name, config))
+    if (containerId && !db.containers.some((c) => c.id === containerId)) {
+      return reply.code(400).send({ error: 'unknown container definition' })
+    }
+    try {
+      return reply.code(201).send(createAgent(userId, name, containerId, config))
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message })
+    }
   })
 
   app.get('/:id', async (req, reply) => accessibleAgent(req, reply) ?? reply)
@@ -58,8 +63,18 @@ export default async function agentRoutes(app: FastifyInstance) {
     if (!requireAdmin(req, reply)) return reply
     const agent = db.agents.find((a) => a.id === (req.params as { id: string }).id)
     if (!agent) return reply.code(404).send({ error: 'agent not found' })
-    const { name, config } = (req.body ?? {}) as { name?: string; config?: Partial<AgentConfig> }
+    const { name, containerId, config } = (req.body ?? {}) as {
+      name?: string
+      containerId?: string
+      config?: Partial<AgentConfig>
+    }
     if (name?.trim()) agent.name = name.trim()
+    if (containerId !== undefined) {
+      if (!db.containers.some((c) => c.id === containerId)) {
+        return reply.code(400).send({ error: 'unknown container definition' })
+      }
+      agent.containerId = containerId
+    }
     if (config) {
       if (config.image !== undefined) agent.config.image = config.image
       if (config.command !== undefined) {
@@ -131,38 +146,31 @@ export default async function agentRoutes(app: FastifyInstance) {
     return reply.code(204).send()
   })
 
-  app.get('/:id/soul', async (req, reply) => {
+  // behavior files come from the agent's container definition — owner-editable
+  app.get('/:id/docs', async (req, reply) => {
     const agent = accessibleAgent(req, reply)
     if (!agent) return reply
-    return { content: getSoul(agent.id) }
+    return {
+      docs: agentFileDefs(agent).map(({ key, label, path, hint }) => ({ key, label, path, hint })),
+    }
   })
 
-  app.put('/:id/soul', async (req, reply) => {
+  app.get('/:id/doc/:key', async (req, reply) => {
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    const content = readAgentDoc(agent, (req.params as { key: string }).key)
+    if (content === null) return reply.code(404).send({ error: 'unknown doc' })
+    return { content }
+  })
+
+  app.put('/:id/doc/:key', async (req, reply) => {
     const agent = accessibleAgent(req, reply)
     if (!agent) return reply
     const { content } = (req.body ?? {}) as { content?: string }
     if (typeof content !== 'string') return reply.code(400).send({ error: 'content (string) required' })
-    putSoul(agent.id, content)
-    return { ok: true }
-  })
-
-  // hermes doc files (memories/MEMORY.md, memories/USER.md) — owner-editable like the soul
-  app.get('/:id/doc/:name', async (req, reply) => {
-    const agent = accessibleAgent(req, reply)
-    if (!agent) return reply
-    const { name } = req.params as { name: string }
-    if (!(name in AGENT_DOCS)) return reply.code(404).send({ error: 'unknown doc' })
-    return { content: getDoc(agent.id, name as AgentDocName) }
-  })
-
-  app.put('/:id/doc/:name', async (req, reply) => {
-    const agent = accessibleAgent(req, reply)
-    if (!agent) return reply
-    const { name } = req.params as { name: string }
-    if (!(name in AGENT_DOCS)) return reply.code(404).send({ error: 'unknown doc' })
-    const { content } = (req.body ?? {}) as { content?: string }
-    if (typeof content !== 'string') return reply.code(400).send({ error: 'content (string) required' })
-    putDoc(agent.id, name as AgentDocName, content)
+    if (!writeAgentDoc(agent, (req.params as { key: string }).key, content)) {
+      return reply.code(404).send({ error: 'unknown doc' })
+    }
     return { ok: true }
   })
 

@@ -2,8 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { dirname, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { AGENTS_DIR, db, newId, save } from './store.js'
-import type { Agent, AgentConfig } from './types.js'
-import { soulTemplate } from './soul-template.js'
+import type { Agent, AgentConfig, ContainerDef, ContainerFileDef } from './types.js'
 
 /** Sequential free host ports starting at settings.docker.portRangeStart. */
 function nextFreeHostPorts(count: number): number[] {
@@ -21,77 +20,92 @@ function nextFreeHostPorts(count: number): number[] {
   return out
 }
 
-
 export function agentDir(id: string): string {
   return join(AGENTS_DIR, id)
 }
 
-function soulPath(id: string): string {
-  return join(agentDir(id), 'SOUL.md')
+export function containerDefFor(agent: Agent): ContainerDef | undefined {
+  return db.containers.find((c) => c.id === agent.containerId)
 }
 
-export function createAgent(userId: string, name?: string, config?: Partial<AgentConfig>): Agent {
+/** Relative path safe to join under the agent dir: no leading slash, no '..', no backslash. */
+export function isSafeRelPath(p: string): boolean {
+  return /^[\w.][\w.\-/ ]*$/.test(p) && !p.includes('..') && !p.includes('\\') && !p.endsWith('/')
+}
+
+export function createAgent(
+  userId: string,
+  name?: string,
+  containerId?: string,
+  config?: Partial<AgentConfig>,
+): Agent {
   const user = db.users.find((u) => u.id === userId)
   if (!user) throw new Error(`user ${userId} not found`)
-  const d = db.settings.docker
+  const def =
+    db.containers.find((c) => c.id === (containerId ?? db.settings.docker.defaultContainerId)) ??
+    db.containers[0]
+  if (!def) throw new Error('no container definitions configured — add one under Containers')
+
   let ports = config?.ports
   if (!ports) {
-    const hostPorts = nextFreeHostPorts(d.defaultContainerPorts.length)
-    ports = Object.fromEntries(d.defaultContainerPorts.map((cp, i) => [String(cp), hostPorts[i]]))
+    const hostPorts = nextFreeHostPorts(def.containerPorts.length)
+    ports = Object.fromEntries(def.containerPorts.map((cp, i) => [String(cp), hostPorts[i]]))
   }
+  const memoryMb = config?.memoryMb ?? def.memoryMb
+  const cpus = config?.cpus ?? def.cpus
   const agent: Agent = {
     id: newId(),
     userId,
     name: name?.trim() || `${user.name}'s Agent`,
+    containerId: def.id,
     config: {
-      image: config?.image ?? d.defaultImage,
-      command: config?.command ?? [...d.defaultCommand],
-      // per-agent gateway auth token for the Hermes OpenAI-compatible API
-      env: config?.env ?? { API_SERVER_KEY: randomBytes(12).toString('hex') },
-      mountPath: config?.mountPath ?? d.defaultMountPath,
+      image: config?.image ?? def.image,
+      command: config?.command ?? [...def.command],
+      // per-agent gateway auth token (used by Hermes' OpenAI-compatible API)
+      env: config?.env ?? { API_SERVER_KEY: randomBytes(12).toString('hex'), ...def.env },
+      mountPath: config?.mountPath ?? def.mountPath,
       ports,
-      ...(config?.memoryMb !== undefined ? { memoryMb: config.memoryMb } : {}),
-      ...(config?.cpus !== undefined ? { cpus: config.cpus } : {}),
+      ...(memoryMb !== undefined ? { memoryMb } : {}),
+      ...(cpus !== undefined ? { cpus } : {}),
     },
     createdAt: new Date().toISOString(),
   }
   mkdirSync(agentDir(agent.id), { recursive: true })
-  writeFileSync(soulPath(agent.id), soulTemplate(agent.name, user.name))
+  for (const f of def.files) {
+    if (!f.template || !isSafeRelPath(f.path)) continue
+    const p = join(agentDir(agent.id), f.path)
+    mkdirSync(dirname(p), { recursive: true })
+    writeFileSync(
+      p,
+      f.template.replaceAll('{{AGENT_NAME}}', agent.name).replaceAll('{{OWNER_NAME}}', user.name),
+    )
+  }
   db.agents.push(agent)
   save()
   return agent
 }
 
-export function getSoul(id: string): string {
-  if (!existsSync(soulPath(id))) return ''
-  return readFileSync(soulPath(id), 'utf8')
+/** Behavior files this agent exposes, from its container definition. */
+export function agentFileDefs(agent: Agent): ContainerFileDef[] {
+  return containerDefFor(agent)?.files ?? []
 }
 
-export function putSoul(id: string, content: string): void {
-  mkdirSync(agentDir(id), { recursive: true })
-  writeFileSync(soulPath(id), content)
-}
-
-/** Hermes doc files editable from the agent screen, alongside the soul. */
-export const AGENT_DOCS = {
-  memory: 'memories/MEMORY.md',
-  user: 'memories/USER.md',
-  agents: 'AGENTS.md',
-  tools: 'TOOLS.md',
-  hermes: '.hermes.md',
-} as const
-export type AgentDocName = keyof typeof AGENT_DOCS
-
-export function getDoc(id: string, doc: AgentDocName): string {
-  const p = join(agentDir(id), AGENT_DOCS[doc])
+/** null = unknown key; '' = file not created yet. */
+export function readAgentDoc(agent: Agent, key: string): string | null {
+  const f = agentFileDefs(agent).find((f) => f.key === key)
+  if (!f || !isSafeRelPath(f.path)) return null
+  const p = join(agentDir(agent.id), f.path)
   if (!existsSync(p)) return ''
   return readFileSync(p, 'utf8')
 }
 
-export function putDoc(id: string, doc: AgentDocName, content: string): void {
-  const p = join(agentDir(id), AGENT_DOCS[doc])
+export function writeAgentDoc(agent: Agent, key: string, content: string): boolean {
+  const f = agentFileDefs(agent).find((f) => f.key === key)
+  if (!f || !isSafeRelPath(f.path)) return false
+  const p = join(agentDir(agent.id), f.path)
   mkdirSync(dirname(p), { recursive: true })
   writeFileSync(p, content)
+  return true
 }
 
 /** Hermes cron job definitions — one YAML/JSON file per job under cron/. */

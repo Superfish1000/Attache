@@ -8,11 +8,7 @@ export default function Settings() {
   const [host, setHost] = useState('')
   const [port, setPort] = useState('')
   const [socketPath, setSocketPath] = useState('')
-  const [defaultImage, setDefaultImage] = useState('')
-  const [defaultCommand, setDefaultCommand] = useState('')
   const [autoPull, setAutoPull] = useState(true)
-  const [defaultMountPath, setDefaultMountPath] = useState('')
-  const [containerPorts, setContainerPorts] = useState('')
   const [portRangeStart, setPortRangeStart] = useState('')
   const [defaultEnvText, setDefaultEnvText] = useState('{}')
   const [restartPolicy, setRestartPolicy] = useState<SettingsView['docker']['restartPolicy']>('unless-stopped')
@@ -26,11 +22,7 @@ export default function Settings() {
     setHost(s.server.host)
     setPort(String(s.server.port))
     setSocketPath(s.docker.socketPath)
-    setDefaultImage(s.docker.defaultImage)
-    setDefaultCommand(s.docker.defaultCommand.join(' '))
     setAutoPull(s.docker.autoPull)
-    setDefaultMountPath(s.docker.defaultMountPath)
-    setContainerPorts(s.docker.defaultContainerPorts.join(', '))
     setPortRangeStart(String(s.docker.portRangeStart))
     setDefaultEnvText(JSON.stringify(s.docker.defaultEnv, null, 2))
     setRestartPolicy(s.docker.restartPolicy)
@@ -61,14 +53,7 @@ export default function Settings() {
         server: { host: host.trim(), port: Number(port) },
         docker: {
           socketPath: socketPath.trim(),
-          defaultImage: defaultImage.trim(),
-          defaultCommand: defaultCommand.split(/\s+/).filter(Boolean),
           autoPull,
-          defaultMountPath: defaultMountPath.trim(),
-          defaultContainerPorts: containerPorts
-            .split(/[,\s]+/)
-            .filter(Boolean)
-            .map(Number),
           portRangeStart: Number(portRangeStart),
           defaultEnv,
           restartPolicy,
@@ -117,27 +102,11 @@ export default function Settings() {
             placeholder="//./pipe/docker_engine"
           />
         </div>
-        <div className="field">
-          <label>Default agent image</label>
-          <input value={defaultImage} onChange={(e) => setDefaultImage(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Default command (space-separated)</label>
-          <input value={defaultCommand} onChange={(e) => setDefaultCommand(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Default data mount path (Hermes expects /opt/data)</label>
-          <input value={defaultMountPath} onChange={(e) => setDefaultMountPath(e.target.value)} />
-        </div>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Image, command, mount path, ports and behavior files are configured per container
+          definition on the <b>Containers</b> page.
+        </p>
         <div className="form-row">
-          <div className="field">
-            <label>Auto-mapped container ports (comma-separated)</label>
-            <input
-              value={containerPorts}
-              onChange={(e) => setContainerPorts(e.target.value)}
-              placeholder="8642, 9119"
-            />
-          </div>
           <div className="field">
             <label>Host port range start</label>
             <input value={portRangeStart} onChange={(e) => setPortRangeStart(e.target.value)} />

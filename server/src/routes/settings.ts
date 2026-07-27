@@ -19,11 +19,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
       server: Partial<{ host: string; port: number }>
       docker: Partial<{
         socketPath: string
-        defaultImage: string
-        defaultCommand: string[]
         autoPull: boolean
-        defaultMountPath: string
-        defaultContainerPorts: number[]
         portRangeStart: number
         defaultEnv: Record<string, string>
         restartPolicy: string
@@ -44,35 +40,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
     }
     if (body.docker) {
       if (body.docker.socketPath !== undefined) s.docker.socketPath = String(body.docker.socketPath).trim()
-      if (body.docker.defaultImage !== undefined) {
-        const img = String(body.docker.defaultImage).trim()
-        if (!img) return reply.code(400).send({ error: 'defaultImage cannot be empty' })
-        s.docker.defaultImage = img
-      }
-      if (body.docker.defaultCommand !== undefined) {
-        if (
-          !Array.isArray(body.docker.defaultCommand) ||
-          body.docker.defaultCommand.some((c) => typeof c !== 'string')
-        ) {
-          return reply.code(400).send({ error: 'defaultCommand must be an array of strings' })
-        }
-        s.docker.defaultCommand = body.docker.defaultCommand
-      }
       if (body.docker.autoPull !== undefined) s.docker.autoPull = Boolean(body.docker.autoPull)
-      if (body.docker.defaultMountPath !== undefined) {
-        const mp = String(body.docker.defaultMountPath).trim()
-        if (!mp.startsWith('/')) {
-          return reply.code(400).send({ error: 'defaultMountPath must be an absolute container path' })
-        }
-        s.docker.defaultMountPath = mp
-      }
-      if (body.docker.defaultContainerPorts !== undefined) {
-        const list = body.docker.defaultContainerPorts
-        if (!Array.isArray(list) || list.some((p) => !Number.isInteger(Number(p)) || Number(p) < 1 || Number(p) > 65535)) {
-          return reply.code(400).send({ error: 'defaultContainerPorts must be a list of ports' })
-        }
-        s.docker.defaultContainerPorts = list.map(Number)
-      }
       if (body.docker.portRangeStart !== undefined) {
         const p = Number(body.docker.portRangeStart)
         if (!Number.isInteger(p) || p < 1024 || p > 65000) {
