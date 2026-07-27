@@ -303,9 +303,80 @@ export default function AgentDetail() {
         {logs !== null && <pre className="logbox">{logs}</pre>}
       </div>
 
+      <h2>Configuration</h2>
+      <div className="panel">
+        {!admin && (
+          <p className="muted" style={{ marginTop: 0 }}>
+            Configuration is managed by an administrator.
+          </p>
+        )}
+        {admin && defs.length > 0 && (
+          <div className="field">
+            <label>Container definition (the Files section below follows this)</label>
+            <select value={agent.containerId} onChange={(e) => void switchDef(e.target.value)}>
+              {defs.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.image})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div className="field">
+          <label>Agent name</label>
+          <input value={name} disabled={!admin} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Container image</label>
+          <input value={image} disabled={!admin} onChange={(e) => setImage(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Command (space-separated)</label>
+          <input value={command} disabled={!admin} onChange={(e) => setCommand(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Environment (JSON object)</label>
+          <textarea
+            rows={5}
+            value={envText}
+            disabled={!admin}
+            onChange={(e) => setEnvText(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label>Data mount path (container)</label>
+          <input value={mountPath} disabled={!admin} onChange={(e) => setMountPath(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>{'Ports (JSON: {"containerPort": hostPort})'}</label>
+          <input value={portsText} disabled={!admin} onChange={(e) => setPortsText(e.target.value)} />
+        </div>
+        <div className="form-row">
+          <div className="field">
+            <label>Memory limit MB (blank = none)</label>
+            <input value={memoryMb} disabled={!admin} onChange={(e) => setMemoryMb(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>CPU limit (blank = none)</label>
+            <input value={cpus} disabled={!admin} onChange={(e) => setCpus(e.target.value)} />
+          </div>
+        </div>
+        {admin && (
+          <div className="btn-row" style={{ marginTop: 14 }}>
+            <button className="btn btn-primary" disabled={busy} onClick={saveConfig}>
+              Save config
+            </button>
+            <button className="btn btn-danger" disabled={busy} onClick={removeAgent}>
+              Delete agent
+            </button>
+          </div>
+        )}
+      </div>
+
       <h2>Files</h2>
       <p className="muted" style={{ margin: '0 0 10px' }}>
-        <span className="mono">data/agents/{agent.id}</span> — mounted into the container at{' '}
+        From the <b>{defs.find((d) => d.id === agent.containerId)?.name ?? 'selected'}</b>{' '}
+        definition — <span className="mono">data/agents/{agent.id}</span> mounted at{' '}
         <span className="mono">{agent.config.mountPath}</span>
       </p>
       {docs.length === 0 && (
@@ -373,76 +444,6 @@ export default function AgentDetail() {
                 Save job
               </button>
             </div>
-          </div>
-        )}
-      </div>
-
-      <h2>Configuration</h2>
-      <div className="panel">
-        {!admin && (
-          <p className="muted" style={{ marginTop: 0 }}>
-            Configuration is managed by an administrator.
-          </p>
-        )}
-        {admin && defs.length > 0 && (
-          <div className="field">
-            <label>Container definition (drives the file list above)</label>
-            <select value={agent.containerId} onChange={(e) => void switchDef(e.target.value)}>
-              {defs.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name} ({d.image})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        <div className="field">
-          <label>Agent name</label>
-          <input value={name} disabled={!admin} onChange={(e) => setName(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Container image</label>
-          <input value={image} disabled={!admin} onChange={(e) => setImage(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Command (space-separated)</label>
-          <input value={command} disabled={!admin} onChange={(e) => setCommand(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Environment (JSON object)</label>
-          <textarea
-            rows={5}
-            value={envText}
-            disabled={!admin}
-            onChange={(e) => setEnvText(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label>Data mount path (container)</label>
-          <input value={mountPath} disabled={!admin} onChange={(e) => setMountPath(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>{'Ports (JSON: {"containerPort": hostPort})'}</label>
-          <input value={portsText} disabled={!admin} onChange={(e) => setPortsText(e.target.value)} />
-        </div>
-        <div className="form-row">
-          <div className="field">
-            <label>Memory limit MB (blank = none)</label>
-            <input value={memoryMb} disabled={!admin} onChange={(e) => setMemoryMb(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>CPU limit (blank = none)</label>
-            <input value={cpus} disabled={!admin} onChange={(e) => setCpus(e.target.value)} />
-          </div>
-        </div>
-        {admin && (
-          <div className="btn-row">
-            <button className="btn btn-primary" disabled={busy} onClick={saveConfig}>
-              Save config
-            </button>
-            <button className="btn btn-danger" disabled={busy} onClick={removeAgent}>
-              Delete agent
-            </button>
           </div>
         )}
       </div>

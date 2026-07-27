@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { Chip, ErrorBanner } from '../components'
 import { useAuth } from '../auth'
-import type { Agent, Role, User } from '../types'
+import type { Agent, ContainerDef, Role, User } from '../types'
 
 export default function Users() {
   const { user: me } = useAuth()
   const [users, setUsers] = useState<User[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
+  const [defs, setDefs] = useState<ContainerDef[]>([])
+  const [defSel, setDefSel] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<Role>('standard')
@@ -18,10 +20,12 @@ export default function Users() {
   const navigate = useNavigate()
 
   const reload = useCallback(() => {
-    Promise.all([api.users.list(), api.agents.list()])
-      .then(([u, a]) => {
+    Promise.all([api.users.list(), api.agents.list(), api.containerDefs.list()])
+      .then(([u, a, cd]) => {
         setUsers(u)
         setAgents(a)
+        setDefs(cd.defs)
+        setDefSel((cur) => cur || cd.defaultId)
       })
       .catch((e: Error) => setErr(e.message))
   }, [])
@@ -76,7 +80,7 @@ export default function Users() {
   const newAgent = async (userId: string) => {
     setErr('')
     try {
-      const agent = await api.agents.create(userId)
+      const agent = await api.agents.create(userId, undefined, defSel || undefined)
       navigate(`/agents/${agent.id}`)
     } catch (e) {
       setErr((e as Error).message)
@@ -143,6 +147,20 @@ export default function Users() {
         </p>
       </div>
       <div className="panel">
+        {defs.length > 0 && (
+          <div className="form-row" style={{ marginBottom: 14 }}>
+            <div className="field">
+              <label>New agents use container</label>
+              <select value={defSel} onChange={(e) => setDefSel(e.target.value)}>
+                {defs.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({d.image})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
         {users.length === 0 ? (
           <div className="empty">No users yet. Add one above or sync from O365.</div>
         ) : (
