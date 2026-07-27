@@ -36,7 +36,7 @@ Container setups live under **Containers** as reusable definitions: image/comman
 
 Put shared model credentials (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) in **Settings → Docker → Default env**, then press **Regenerate** on each agent (recreates the container so env/port/definition changes apply; behavior files are untouched unless you tick *reset files from templates*). The ⓘ next to every env editor documents the variables.
 
-The **Chat** tab talks to any agent you own through its OpenAI-compatible gateway (Attache proxies with the per-agent `API_SERVER_KEY`; streaming, history kept per agent in your browser).
+The **Chat** tab talks to any agent you own by running the Hermes CLI inside its container (`hermes chat -q -Q`) — this image ships no HTTP inference endpoint despite what its docs suggest. Conversation context lives in a per-user Hermes session inside the agent's data dir; expect ~1–3 min per reply with the default Opus model. Old Docker daemons (20.10.x) need `seccomp=unconfined` in **Settings → Docker → Security options** or the agent can't spawn threads (`clone3` blocked by the old seccomp profile — upgrade Docker Desktop to drop the workaround).
 
 ## Notes
 

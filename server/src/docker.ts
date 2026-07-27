@@ -1,5 +1,7 @@
 import Docker from 'dockerode'
-import { resolve } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { Writable } from 'node:stream'
 import type { Agent } from './types.js'
 import { agentDir } from './agents.js'
 import { db } from './store.js'
@@ -106,12 +108,124 @@ export async function startAgentContainer(agent: Agent): Promise<ContainerInfo> 
       Binds: [`${bindSrc}:${mountPath}`],
       PortBindings: bindings,
       RestartPolicy: { Name: db.settings.docker.restartPolicy },
+      ...(db.settings.docker.securityOpt.length
+        ? { SecurityOpt: db.settings.docker.securityOpt }
+        : {}),
       ...(cfg.memoryMb ? { Memory: cfg.memoryMb * 1024 * 1024 } : {}),
       ...(cfg.cpus ? { NanoCpus: Math.round(cfg.cpus * 1e9) } : {}),
     },
   })
   await container.start()
   return containerInfo(agent.id)
+}
+
+interface ExecResult {
+  exitCode: number
+  stdout: string
+  stderr: string
+}
+
+async function execInAgent(agent: Agent, cmd: string[]): Promise<ExecResult> {
+  const container = getDocker().getContainer(nameFor(agent.id))
+  const exec = await container.exec({
+    Cmd: cmd,
+    User: 'hermes', // root-written session files would break the supervised gateway
+    Env: ['HOME=/opt/data'],
+    AttachStdout: true,
+    AttachStderr: true,
+  })
+  const stream = await exec.start({ hijack: true, stdin: false })
+  const out: Buffer[] = []
+  const err: Buffer[] = []
+  const sink = (bufs: Buffer[]) =>
+    new Writable({
+      write(chunk, _enc, cb) {
+        bufs.push(Buffer.from(chunk))
+        cb()
+      },
+    })
+  // Old daemons (20.10.x named pipe) never emit end/close on hijacked exec
+  // streams, so completion is detected by polling exec.inspect().Running.
+  const CHAT_TIMEOUT_MS = 10 * 60_000
+  await new Promise<void>((resolveDone, reject) => {
+    getDocker().modem.demuxStream(stream, sink(out), sink(err))
+    let settled = false
+    const finish = (fail?: Error) => {
+      if (settled) return
+      settled = true
+      clearInterval(poll)
+      clearTimeout(cap)
+      stream.destroy()
+      fail ? reject(fail) : resolveDone()
+    }
+    stream.on('end', () => finish())
+    stream.on('close', () => finish())
+    stream.on('error', (e: Error) => finish(e))
+    const poll = setInterval(() => {
+      exec
+        .inspect()
+        .then((i) => {
+          // grace period lets trailing output flush before we stop reading
+          if (i.Running === false) setTimeout(() => finish(), 300)
+        })
+        .catch(() => undefined)
+    }, 1000)
+    const cap = setTimeout(() => finish(new Error('agent chat timed out')), CHAT_TIMEOUT_MS)
+  })
+  const inspect = await exec.inspect()
+  const strip = (b: Buffer) =>
+    b
+      .toString('utf8')
+      // ANSI colors/cursor sequences from the CLI renderer
+      .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
+  return {
+    exitCode: inspect.ExitCode ?? 0,
+    stdout: strip(Buffer.concat(out)),
+    stderr: strip(Buffer.concat(err)),
+  }
+}
+
+/**
+ * Chat with the agent via its CLI inside the container (`hermes chat -q -Q`).
+ * This Hermes build ships no HTTP inference endpoint — the messaging gateway,
+ * dashboard backend and OAuth proxy are all something else — so the CLI is the
+ * supported programmatic transport. Conversation context lives in a hermes
+ * session per Attache user; the session id is kept in the agent's data dir.
+ */
+export async function execAgentChat(agent: Agent, text: string, userId: string): Promise<string> {
+  const sessFile = join(agentDir(agent.id), '.attache', `chat-${userId}.session`)
+  const prev = existsSync(sessFile) ? readFileSync(sessFile, 'utf8').trim() : ''
+  const base = ['/opt/hermes/.venv/bin/hermes', 'chat', '-q', text, '-Q']
+  let res = await execInAgent(agent, prev ? [...base, '--resume', prev] : base)
+  if (res.exitCode !== 0 && prev && /No session found/i.test(res.stdout + res.stderr)) {
+    // agent pruned the session — start a fresh thread
+    res = await execInAgent(agent, base)
+  }
+  const raw = res.stdout
+  // -Q prints the session id on stderr; older formats used stdout ("Session:")
+  const sessionMatch = /(?:^|\n)\s*(?:Session|session_id):\s*(\S+)/.exec(
+    raw + '\n' + res.stderr,
+  )
+  if (sessionMatch) {
+    mkdirSync(dirname(sessFile), { recursive: true })
+    writeFileSync(sessFile, sessionMatch[1])
+  }
+  let content = raw
+  for (const marker of [
+    /\nResume this session with:[\s\S]*$/,
+    /\n\s*Session:\s[\s\S]*$/,
+    /\n?\s*session_id:[\s\S]*$/,
+  ]) {
+    content = content.replace(marker, '')
+  }
+  content = content
+    // ⚠ warnings wrap to a short continuation line (e.g. "... for \nanthropic.")
+    .replace(/^\s*⚠.*(?:\n[a-z0-9_./-]+\.)?/gim, '')
+    .trim()
+  if (res.exitCode !== 0) {
+    throw new Error((content || res.stderr.trim() || 'agent chat failed').slice(-400))
+  }
+  return content
 }
 
 /** Tail of container output with docker's stream-multiplex headers stripped. */

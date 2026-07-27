@@ -12,6 +12,7 @@ export default function Settings() {
   const [portRangeStart, setPortRangeStart] = useState('')
   const [defaultEnvText, setDefaultEnvText] = useState('{}')
   const [restartPolicy, setRestartPolicy] = useState<SettingsView['docker']['restartPolicy']>('unless-stopped')
+  const [securityOpt, setSecurityOpt] = useState('')
   const [sessionTtl, setSessionTtl] = useState('')
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
@@ -26,6 +27,7 @@ export default function Settings() {
     setPortRangeStart(String(s.docker.portRangeStart))
     setDefaultEnvText(JSON.stringify(s.docker.defaultEnv, null, 2))
     setRestartPolicy(s.docker.restartPolicy)
+    setSecurityOpt(s.docker.securityOpt.join(', '))
     setSessionTtl(String(s.security.sessionTtlHours))
   }
 
@@ -57,6 +59,7 @@ export default function Settings() {
           portRangeStart: Number(portRangeStart),
           defaultEnv,
           restartPolicy,
+          securityOpt: securityOpt.split(/[,\s]+/).filter(Boolean),
         },
         security: { sessionTtlHours: Number(sessionTtl) },
       })
@@ -123,6 +126,10 @@ export default function Settings() {
               <option value="always">always</option>
             </select>
           </div>
+        </div>
+        <div className="field">
+          <label>Security options (comma-separated, e.g. seccomp=unconfined for old daemons)</label>
+          <input value={securityOpt} onChange={(e) => setSecurityOpt(e.target.value)} />
         </div>
         <div className="field">
           <label>

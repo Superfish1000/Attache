@@ -127,6 +127,7 @@ export interface SettingsView {
     portRangeStart: number
     defaultEnv: Record<string, string>
     restartPolicy: 'no' | 'unless-stopped' | 'on-failure' | 'always'
+    securityOpt: string[]
     defaultContainerId: string
   }
   security: { sessionTtlHours: number }

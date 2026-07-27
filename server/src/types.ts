@@ -94,6 +94,12 @@ export interface DockerSettings {
   /** Env applied to every agent container (per-agent env overrides). */
   defaultEnv: Record<string, string>
   restartPolicy: 'no' | 'unless-stopped' | 'on-failure' | 'always'
+  /**
+   * docker --security-opt entries applied to every agent container.
+   * Needed on old daemons (e.g. 20.10.x) whose seccomp profile blocks clone3,
+   * breaking Python threads in modern images: ["seccomp=unconfined"].
+   */
+  securityOpt: string[]
   /** Container definition used for new agents unless one is chosen explicitly. */
   defaultContainerId: string
 }

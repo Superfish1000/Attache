@@ -23,6 +23,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
         portRangeStart: number
         defaultEnv: Record<string, string>
         restartPolicy: string
+        securityOpt: string[]
       }>
       security: Partial<{ sessionTtlHours: number }>
     }>
@@ -54,6 +55,15 @@ export default async function settingsRoutes(app: FastifyInstance) {
           return reply.code(400).send({ error: 'defaultEnv must be an object of string values' })
         }
         s.docker.defaultEnv = Object.fromEntries(Object.entries(e).map(([k, v]) => [k, String(v)]))
+      }
+      if (body.docker.securityOpt !== undefined) {
+        if (
+          !Array.isArray(body.docker.securityOpt) ||
+          body.docker.securityOpt.some((o) => typeof o !== 'string')
+        ) {
+          return reply.code(400).send({ error: 'securityOpt must be an array of strings' })
+        }
+        s.docker.securityOpt = body.docker.securityOpt.map((o) => o.trim()).filter(Boolean)
       }
       if (body.docker.restartPolicy !== undefined) {
         const rp = String(body.docker.restartPolicy)

@@ -79,68 +79,27 @@ export default function Chat() {
     const history: ChatMsg[] = [...msgs, { role: 'user', content: text }]
     setMsgs([...history, { role: 'assistant', content: '' }])
     setStreaming(true)
-    let assistant = ''
     const ctrl = new AbortController()
     abortRef.current = ctrl
     try {
+      // the agent CLI answers in one piece (context lives in the agent's own session)
       const res = await fetch(`/api/agents/${agentId}/chat`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ messages: history, stream: true }),
+        body: JSON.stringify({ messages: history }),
         signal: ctrl.signal,
       })
-      if (!res.ok || !res.body) {
-        let msg = `chat failed (${res.status})`
-        try {
-          const body = (await res.json()) as { error?: { message?: string } | string }
-          msg =
-            typeof body.error === 'string'
-              ? body.error
-              : (body.error?.message ?? JSON.stringify(body).slice(0, 300))
-        } catch {
-          // non-JSON error
-        }
-        throw new Error(msg)
-      }
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-        for (const line of lines) {
-          const data = line.trim()
-          if (!data.startsWith('data:')) continue
-          const payload = data.slice(5).trim()
-          if (payload === '[DONE]') continue
-          try {
-            const parsed = JSON.parse(payload) as {
-              choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>
-            }
-            const chunk =
-              parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.message?.content ?? ''
-            if (chunk) {
-              assistant += chunk
-              setMsgs([...history, { role: 'assistant', content: assistant }])
-            }
-          } catch {
-            // partial frame — wait for more
-          }
-        }
-      }
-      const finalMsgs: ChatMsg[] = [...history, { role: 'assistant', content: assistant }]
+      const body = (await res.json()) as { content?: string; error?: string }
+      if (!res.ok) throw new Error(body.error ?? `chat failed (${res.status})`)
+      const finalMsgs: ChatMsg[] = [
+        ...history,
+        { role: 'assistant', content: body.content || '(no response)' },
+      ]
       setMsgs(finalMsgs)
       persist(agentId, finalMsgs)
     } catch (e) {
-      // keep whatever partial text streamed before the failure
-      const finalMsgs: ChatMsg[] = assistant
-        ? [...history, { role: 'assistant', content: assistant }]
-        : history
-      setMsgs(finalMsgs)
-      persist(agentId, finalMsgs)
+      setMsgs(history)
+      persist(agentId, history)
       if ((e as Error).name !== 'AbortError') setErr((e as Error).message)
     } finally {
       setStreaming(false)
@@ -175,7 +134,9 @@ export default function Chat() {
   return (
     <>
       <h1>Chat</h1>
-      <p className="subtitle">Talk to your agent — messages go through its gateway</p>
+      <p className="subtitle">
+        Talk to your agent — it remembers, uses its tools, and may take a minute on complex asks
+      </p>
       <ErrorBanner message={err} onDismiss={() => setErr('')} />
       {agents.length === 0 ? (
         <div className="panel empty">
