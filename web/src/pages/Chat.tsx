@@ -35,6 +35,14 @@ export default function Chat() {
   // also stops the agent generating for nobody
   useEffect(() => () => abortRef.current?.abort(), [])
 
+  // a reload mid-reply loses the answer — make the browser ask first
+  useEffect(() => {
+    if (!streaming) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [streaming])
+
   useEffect(() => {
     api.agents
       .list()
@@ -186,6 +194,12 @@ export default function Chat() {
                 )}
               </div>
             ))}
+            {streaming && (
+              <div className="muted" style={{ padding: '4px 2px' }}>
+                ⏳ {agent?.name ?? 'The agent'} is thinking — replies can take 1–3 minutes. Stay on
+                this page; leaving cancels the reply.
+              </div>
+            )}
           </div>
           <div className="chat-input-row">
             <textarea
