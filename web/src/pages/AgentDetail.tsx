@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { Chip, ErrorBanner, fmtDate } from '../components'
 import { useAuth } from '../auth'
-import type { Agent, ContainerState, User } from '../types'
+import type { Agent, AgentFileEntry, ContainerState, User } from '../types'
 
 export default function AgentDetail() {
   const { id = '' } = useParams()
@@ -23,6 +23,11 @@ export default function AgentDetail() {
   const [cpus, setCpus] = useState('')
   const [soul, setSoul] = useState('')
   const [logs, setLogs] = useState<string | null>(null)
+  const [cwd, setCwd] = useState('')
+  const [entries, setEntries] = useState<AgentFileEntry[]>([])
+  const [openPath, setOpenPath] = useState<string | null>(null)
+  const [fileText, setFileText] = useState('')
+  const [newName, setNewName] = useState('')
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -130,6 +135,56 @@ export default function AgentDetail() {
     }
   }
 
+  const loadDir = async (path: string) => {
+    setErr('')
+    try {
+      const res = await api.agents.files(id, path)
+      setCwd(path)
+      setEntries(res.entries)
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
+  useEffect(() => {
+    if (admin && agent) void loadDir('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [admin, agent?.id])
+
+  const openFile = async (path: string) => {
+    setErr('')
+    try {
+      const res = await api.agents.readFile(id, path)
+      setOpenPath(path)
+      setFileText(res.content)
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
+  const saveFile = async () => {
+    if (openPath === null) return
+    setBusy(true)
+    setErr('')
+    try {
+      await api.agents.writeFile(id, openPath, fileText)
+      flash(`Saved ${openPath}`)
+      void loadDir(cwd)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const createFile = () => {
+    const name = newName.trim()
+    if (!name || name.includes('/') || name.includes('\\')) return
+    setOpenPath(cwd ? `${cwd}/${name}` : name)
+    setFileText('')
+    setNewName('')
+  }
+
   const removeAgent = async () => {
     if (!agent) return
     if (!confirm(`Delete agent "${agent.name}" (and its container + soul file)?`)) return
@@ -223,6 +278,73 @@ export default function AgentDetail() {
           </button>
         </div>
       </div>
+
+      {admin && (
+        <>
+          <h2>Files</h2>
+          <div className="panel">
+            <p className="muted" style={{ marginTop: 0 }}>
+              Everything Hermes keeps in <span className="mono">/opt/data</span> — edit{' '}
+              <span className="mono">config.yaml</span>, <span className="mono">.env</span>, memories,
+              skills, cron jobs. <span className="mono">sessions/</span> and{' '}
+              <span className="mono">logs/</span> are system-managed.
+            </p>
+            <div className="file-crumbs">
+              <button
+                className="btn"
+                disabled={!cwd}
+                onClick={() => void loadDir(cwd.split('/').slice(0, -1).join('/'))}
+              >
+                ↑ Up
+              </button>
+              <span className="mono muted">/{cwd}</span>
+              <span style={{ flex: 1 }} />
+              <input
+                placeholder="new-file.md"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                style={{ width: 160 }}
+              />
+              <button className="btn" disabled={!newName.trim()} onClick={createFile}>
+                New file
+              </button>
+            </div>
+            <div className="file-list">
+              {entries.length === 0 && <span className="muted">(empty)</span>}
+              {entries.map((e) => (
+                <button
+                  key={e.name}
+                  className={`file-item ${e.dir ? 'file-dir' : ''}`}
+                  onClick={() =>
+                    e.dir
+                      ? void loadDir(cwd ? `${cwd}/${e.name}` : e.name)
+                      : void openFile(cwd ? `${cwd}/${e.name}` : e.name)
+                  }
+                >
+                  {e.dir ? `${e.name}/` : e.name}
+                  {!e.dir && <span className="file-size">{e.size}</span>}
+                </button>
+              ))}
+            </div>
+            {openPath !== null && (
+              <div style={{ marginTop: 12 }}>
+                <p className="mono muted" style={{ margin: '0 0 6px' }}>
+                  {openPath}
+                </p>
+                <textarea rows={14} value={fileText} onChange={(e) => setFileText(e.target.value)} />
+                <div className="btn-row" style={{ marginTop: 10 }}>
+                  <button className="btn btn-primary" disabled={busy} onClick={saveFile}>
+                    Save file
+                  </button>
+                  <button className="btn" onClick={() => setOpenPath(null)}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       <h2>Configuration</h2>
       <div className="panel">

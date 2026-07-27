@@ -49,6 +49,21 @@ export default function Agents() {
     }
   }
 
+  const removeAgent = async (a: Agent) => {
+    if (!confirm(`Delete agent "${a.name}"? Removes its container and all files (soul, memories).`))
+      return
+    setBusyId(a.id)
+    setErr('')
+    try {
+      await api.agents.remove(a.id)
+      reload()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusyId('')
+    }
+  }
+
   const dockerUp = containers?.available ?? false
 
   return (
@@ -105,6 +120,15 @@ export default function Agents() {
                       >
                         Stop
                       </button>
+                      {admin && (
+                        <button
+                          className="btn btn-danger"
+                          disabled={busyId === a.id}
+                          onClick={() => removeAgent(a)}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

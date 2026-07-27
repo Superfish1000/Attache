@@ -435,6 +435,45 @@ textarea:disabled {
   text-align: center;
 }
 
+.file-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.file-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.file-item {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.file-item:hover {
+  border-color: var(--accent-dim);
+}
+
+.file-dir {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.file-size {
+  color: var(--muted);
+  margin-left: 6px;
+  font-size: 10px;
+}
+
 .logbox {
   background: #0a0d12;
   border: 1px solid var(--border);

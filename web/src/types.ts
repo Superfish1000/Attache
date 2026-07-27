@@ -106,6 +106,12 @@ export interface SettingsView {
   dataDir: string
 }
 
+export interface AgentFileEntry {
+  name: string
+  dir: boolean
+  size: number
+}
+
 export interface MeResponse {
   user: User | null
   needsSetup: boolean

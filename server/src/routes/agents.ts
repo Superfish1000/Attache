@@ -1,6 +1,14 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { db, save } from '../store.js'
-import { createAgent, deleteAgent, getSoul, putSoul } from '../agents.js'
+import {
+  createAgent,
+  deleteAgent,
+  getSoul,
+  listAgentFiles,
+  putSoul,
+  readAgentFile,
+  writeAgentFile,
+} from '../agents.js'
 import {
   containerInfo,
   containerLogs,
@@ -132,6 +140,49 @@ export default async function agentRoutes(app: FastifyInstance) {
     if (typeof content !== 'string') return reply.code(400).send({ error: 'content (string) required' })
     putSoul(agent.id, content)
     return { ok: true }
+  })
+
+  // agent data-dir file browser/editor (config.yaml, .env, memories/, skills/, ...) — admin only
+  app.get('/:id/files', async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    const { path = '' } = req.query as { path?: string }
+    try {
+      return { entries: listAgentFiles(agent.id, path) }
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message })
+    }
+  })
+
+  app.get('/:id/file', async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    const { path } = req.query as { path?: string }
+    if (!path) return reply.code(400).send({ error: 'path query param required' })
+    try {
+      return { content: readAgentFile(agent.id, path) }
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code === 'ENOENT' ? 404 : 400
+      return reply.code(code).send({ error: (err as Error).message })
+    }
+  })
+
+  app.put('/:id/file', async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    const { path, content } = (req.body ?? {}) as { path?: string; content?: string }
+    if (!path || typeof content !== 'string') {
+      return reply.code(400).send({ error: 'path and content (string) required' })
+    }
+    try {
+      writeAgentFile(agent.id, path, content)
+      return { ok: true }
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message })
+    }
   })
 
   app.get('/:id/container', async (req, reply) => {
