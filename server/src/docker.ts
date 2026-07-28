@@ -417,7 +417,18 @@ export async function startMcpLogin(
     .replaceAll('{{LOG}}', logInContainer)
   const exec = await getDocker()
     .getContainer(nameFor(agent.id))
-    .exec({ Cmd: ['sh', '-c', `nohup sh -c '${rendered.replaceAll("'", "'\\''")}' >/dev/null 2>&1 &`], AttachStdout: false, AttachStderr: false })
+    .exec({
+      // truncate the previous log in-container first — the host-side rm above
+      // can't reach it once the runtime owns the dir, and a stale log would
+      // pose as this run's output
+      Cmd: [
+        'sh',
+        '-c',
+        `: > '${logInContainer}'; nohup sh -c '${rendered.replaceAll("'", "'\\''")}' >/dev/null 2>&1 &`,
+      ],
+      AttachStdout: false,
+      AttachStderr: false,
+    })
   await exec.start({ Detach: true })
   // tail the log for the device code (login itself runs for minutes); host
   // read first, falling back through docker when the container owns the file
