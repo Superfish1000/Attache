@@ -1,6 +1,6 @@
 {
   "name": "attache",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Web GUI for spinning up and managing containerized AI agents",
   "type": "module",
