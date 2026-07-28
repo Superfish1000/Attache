@@ -64,7 +64,7 @@ Container definitions are the blueprints agents are stamped from:
 
 ### Building definition images from the GUI
 
-Definitions can carry a **Dockerfile** (Containers page → Image build). **Build image** builds it tagged as the definition's image — no terminal needed. On old daemons where `docker build` aborts (the seccomp/`clone3` issue), simple `FROM` + `RUN` Dockerfiles are automatically built by running the steps in a container under the configured security options and committing the result; the output panel tells you which path ran. The two ⓘ buttons in the MCP section document every field and every template placeholder (`{{NAME}}`, `{{URL}}`, `{{COMMAND}}`, `{{TOKEN}}`, `{{EXTRA}}`, `{{OWNER_EMAIL}}`, `{{OWNER_NAME}}`, `{{NAME_UPPER}}`, `{{LOG}}`).
+At the top of the definition editor, **Image source** chooses between a **standard image** (just a name, e.g. `nousresearch/hermes-agent:latest`) and **Build from Dockerfile** — a collapsible Dockerfile editor whose **Build image** button builds it tagged as the definition's image, no terminal needed. The two are an either/or: saving in standard-image mode clears the stored Dockerfile. On old daemons where `docker build` aborts (the seccomp/`clone3` issue), simple `FROM` + `RUN` Dockerfiles are automatically built by running the steps in a container under the configured security options and committing the result; the output panel tells you which path ran. The two ⓘ buttons in the MCP section document every field and every template placeholder (`{{NAME}}`, `{{URL}}`, `{{COMMAND}}`, `{{TOKEN}}`, `{{EXTRA}}`, `{{OWNER_EMAIL}}`, `{{OWNER_NAME}}`, `{{NAME_UPPER}}`, `{{LOG}}`).
 
 ### Worked example: Microsoft 365 per user
 

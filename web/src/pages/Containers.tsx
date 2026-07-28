@@ -29,6 +29,7 @@ export default function Containers() {
   const [mcpEnvKey, setMcpEnvKey] = useState('')
   const [mcpLogin, setMcpLogin] = useState('')
   const [dockerfile, setDockerfile] = useState('')
+  const [imgMode, setImgMode] = useState<'image' | 'dockerfile'>('image')
   const [buildOut, setBuildOut] = useState('')
   const [building, setBuilding] = useState(false)
   const [err, setErr] = useState('')
@@ -51,6 +52,7 @@ export default function Containers() {
     setMcpEnvKey(def.mcpTokenEnvKey)
     setMcpLogin(def.mcpLoginCommand)
     setDockerfile(def.dockerfile)
+    setImgMode(def.dockerfile.trim() ? 'dockerfile' : 'image')
     setBuildOut('')
   }, [])
 
@@ -120,7 +122,7 @@ export default function Containers() {
         mcpProvisionCommand: mcpCmd,
         mcpTokenEnvKey: mcpEnvKey,
         mcpLoginCommand: mcpLogin,
-        dockerfile,
+        dockerfile: imgMode === 'dockerfile' ? dockerfile : '',
       })
       flash(`${updated.name} saved`)
       reload()
@@ -253,11 +255,58 @@ export default function Containers() {
                 <label>Name</label>
                 <input value={name} onChange={(e) => setName(e.target.value)} />
               </div>
+              <div className="field">
+                <label>Image source</label>
+                <select
+                  value={imgMode}
+                  onChange={(e) => setImgMode(e.target.value as 'image' | 'dockerfile')}
+                >
+                  <option value="image">Standard image</option>
+                  <option value="dockerfile">Build from Dockerfile</option>
+                </select>
+              </div>
               <div className="field" style={{ flex: 1 }}>
-                <label>Image</label>
+                <label>{imgMode === 'dockerfile' ? 'Built image tag' : 'Image'}</label>
                 <input value={image} onChange={(e) => setImage(e.target.value)} style={{ width: '100%' }} />
               </div>
             </div>
+            {imgMode === 'dockerfile' && (
+              <details className="doc-exp" style={{ marginTop: 10 }}>
+                <summary>
+                  <b>Dockerfile</b>{' '}
+                  <span className="mono muted">built as {image || '(set a tag above)'}</span>
+                </summary>
+                <div className="doc-body">
+                  <p className="muted" style={{ marginTop: 0 }}>
+                    Overrides the standard image: the build tags its result as the tag above and
+                    agent containers run that. On old Docker daemons where builds abort, simple
+                    FROM+RUN files are automatically built via run + commit instead. Switching back
+                    to a standard image clears the Dockerfile on save.
+                  </p>
+                  <div className="field">
+                    <textarea
+                      rows={6}
+                      value={dockerfile}
+                      onChange={(e) => setDockerfile(e.target.value)}
+                      placeholder={'FROM nousresearch/hermes-agent:latest\nRUN npm install -g some-mcp-server'}
+                    />
+                  </div>
+                  <div className="btn-row">
+                    <button
+                      className="btn"
+                      disabled={building || !dockerfile.trim()}
+                      onClick={buildImage}
+                    >
+                      {building ? 'Building…' : 'Build image'}
+                    </button>
+                    <span className="muted" style={{ alignSelf: 'center' }}>
+                      Save the definition first — the build uses the saved Dockerfile.
+                    </span>
+                  </div>
+                  {buildOut && <pre className="logbox">{buildOut}</pre>}
+                </div>
+              </details>
+            )}
             <div className="field" style={{ marginTop: 14 }}>
               <label>Command (space-separated)</label>
               <input value={command} onChange={(e) => setCommand(e.target.value)} />
@@ -438,31 +487,6 @@ export default function Containers() {
               </label>
               <textarea rows={3} value={mcpLogin} onChange={(e) => setMcpLogin(e.target.value)} />
             </div>
-
-            <h2 style={{ marginTop: 18 }}>Image build</h2>
-            <p className="muted" style={{ marginTop: 0 }}>
-              Optional Dockerfile built as <span className="mono">{image || 'the image tag above'}</span>.
-              On old Docker daemons where builds abort, simple FROM+RUN files are automatically
-              built via run + commit instead.
-            </p>
-            <div className="field">
-              <label>Dockerfile</label>
-              <textarea
-                rows={6}
-                value={dockerfile}
-                onChange={(e) => setDockerfile(e.target.value)}
-                placeholder={'FROM nousresearch/hermes-agent:latest\nRUN npm install -g some-mcp-server'}
-              />
-            </div>
-            <div className="btn-row">
-              <button className="btn" disabled={building || !dockerfile.trim()} onClick={buildImage}>
-                {building ? 'Building…' : 'Build image'}
-              </button>
-              <span className="muted" style={{ alignSelf: 'center' }}>
-                Save the definition first — the build uses the saved Dockerfile.
-              </span>
-            </div>
-            {buildOut && <pre className="logbox">{buildOut}</pre>}
 
             <div className="btn-row" style={{ marginTop: 18 }}>
               <button className="btn btn-primary" disabled={busy} onClick={saveDef}>
