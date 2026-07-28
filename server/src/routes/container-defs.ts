@@ -92,13 +92,22 @@ function applyBody(def: ContainerDef, body: Partial<ContainerDef>): string | nul
       }
       if (seen.has(s.name)) return `duplicate MCP server name '${s.name}'`
       seen.add(s.name)
-      if (typeof s.url !== 'string' || !/^https?:\/\/\S+$/.test(s.url.trim())) {
-        return `MCP server '${s.name}' needs an http(s) URL`
+      s.url = typeof s.url === 'string' ? s.url.trim() : ''
+      s.command = typeof s.command === 'string' ? s.command.trim() : ''
+      if (!s.url && !s.command) {
+        return `MCP server '${s.name}' needs a URL or a stdio command`
       }
-      s.url = s.url.trim()
+      if (s.url && !/^https?:\/\/\S+$/.test(s.url)) {
+        return `MCP server '${s.name}' URL must be http(s)`
+      }
+      s.extraArgs = typeof s.extraArgs === 'string' ? s.extraArgs.trim() : ''
       s.authToken = typeof s.authToken === 'string' ? s.authToken.trim() : ''
     }
     def.mcpServers = body.mcpServers
+  }
+  if (body.mcpLoginCommand !== undefined) {
+    if (typeof body.mcpLoginCommand !== 'string') return 'mcpLoginCommand must be a string'
+    def.mcpLoginCommand = body.mcpLoginCommand
   }
   if (body.mcpTokenEnvKey !== undefined) {
     if (typeof body.mcpTokenEnvKey !== 'string') return 'mcpTokenEnvKey must be a string'
@@ -136,6 +145,7 @@ export default async function containerDefRoutes(app: FastifyInstance) {
       mcpServers: [],
       mcpProvisionCommand: '',
       mcpTokenEnvKey: '',
+      mcpLoginCommand: '',
       createdAt: new Date().toISOString(),
     }
     const err = applyBody(def, (req.body ?? {}) as Partial<ContainerDef>)

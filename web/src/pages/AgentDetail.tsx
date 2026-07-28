@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { Chip, EnvVarsHelp, ErrorBanner, InfoPopup, fmtDate } from '../components'
 import { useAuth } from '../auth'
-import type { Agent, AgentDocInfo, ContainerDef, ContainerState, User } from '../types'
+import type { Agent, AgentDocInfo, ContainerDef, ContainerState, McpInfo, User } from '../types'
 
 export default function AgentDetail() {
   const { id = '' } = useParams()
@@ -30,6 +30,7 @@ export default function AgentDetail() {
   const [cronText, setCronText] = useState('')
   const [logs, setLogs] = useState<string | null>(null)
   const [resetFiles, setResetFiles] = useState(false)
+  const [mcpInfo, setMcpInfo] = useState<McpInfo | null>(null)
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -41,8 +42,10 @@ export default function AgentDetail() {
       api.agents.docs(id),
       api.agents.container(id),
       api.agents.cronJobs(id),
+      api.agents.mcpInfo(id),
     ])
-      .then(([a, users, docsRes, c, cj]) => {
+      .then(([a, users, docsRes, c, cj, mi]) => {
+        setMcpInfo(mi)
         setAgent(a)
         setOwner(users.find((u) => u.id === a.userId) ?? null)
         setName(a.name)
@@ -196,6 +199,20 @@ export default function AgentDetail() {
       )
       setResetFiles(false)
       load()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const mcpSignIn = async () => {
+    setBusy(true)
+    setErr('')
+    try {
+      const res = await api.agents.mcpLogin(id)
+      setLogs(res.output)
+      flash('Sign-in started — follow the instructions below, then it completes on its own')
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -360,6 +377,16 @@ export default function AgentDetail() {
           <button className="btn" disabled={!dockerUp} onClick={fetchLogs}>
             {logs === null ? 'View logs' : 'Refresh logs'}
           </button>
+          {mcpInfo?.hasLogin && (
+            <button
+              className="btn"
+              disabled={!dockerUp || busy || !container?.running}
+              title="Start the one-time MCP sign-in (device code) for this agent's integrations"
+              onClick={mcpSignIn}
+            >
+              MCP sign-in
+            </button>
+          )}
           {admin &&
             (defs.find((d) => d.id === agent.containerId)?.mcpServers.length ?? 0) > 0 && (
               <button

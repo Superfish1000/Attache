@@ -5,6 +5,7 @@ import type {
   ContainerDef,
   ContainerState,
   ContainersResponse,
+  McpInfo,
   McpProvisionResult,
   McpStatus,
   MeResponse,
@@ -94,6 +95,9 @@ export const api = {
       ),
     provisionMcp: (id: string) =>
       req<{ results: McpProvisionResult[] }>(`/api/agents/${id}/mcp/provision`, { method: 'POST' }),
+    mcpInfo: (id: string) => req<McpInfo>(`/api/agents/${id}/mcp/info`),
+    mcpLogin: (id: string) =>
+      req<{ output: string }>(`/api/agents/${id}/mcp/login`, { method: 'POST' }),
   },
   o365: {
     settings: () => req<O365SettingsView>('/api/o365/settings'),

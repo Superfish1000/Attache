@@ -20,6 +20,7 @@ export default function Containers() {
   const [mcpServers, setMcpServers] = useState<McpServerDef[]>([])
   const [mcpCmd, setMcpCmd] = useState('')
   const [mcpEnvKey, setMcpEnvKey] = useState('')
+  const [mcpLogin, setMcpLogin] = useState('')
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -38,6 +39,7 @@ export default function Containers() {
     setMcpServers(def.mcpServers.map((s) => ({ ...s })))
     setMcpCmd(def.mcpProvisionCommand)
     setMcpEnvKey(def.mcpTokenEnvKey)
+    setMcpLogin(def.mcpLoginCommand)
   }, [])
 
   const reload = useCallback(
@@ -105,6 +107,7 @@ export default function Containers() {
         mcpServers,
         mcpProvisionCommand: mcpCmd,
         mcpTokenEnvKey: mcpEnvKey,
+        mcpLoginCommand: mcpLogin,
       })
       flash(`${updated.name} saved`)
       reload()
@@ -151,7 +154,8 @@ export default function Containers() {
   const updMcp = (i: number, patch: Partial<McpServerDef>) =>
     setMcpServers((ss) => ss.map((s, j) => (j === i ? { ...s, ...patch } : s)))
 
-  const addMcp = () => setMcpServers((ss) => [...ss, { name: '', url: '', authToken: '' }])
+  const addMcp = () =>
+    setMcpServers((ss) => [...ss, { name: '', url: '', command: '', extraArgs: '', authToken: '' }])
 
   const removeMcp = (i: number) => setMcpServers((ss) => ss.filter((_, j) => j !== i))
 
@@ -319,36 +323,57 @@ export default function Containers() {
               <span className="mono">{'{{URL}}'}</span> are substituted per server.
             </p>
             {mcpServers.map((s, i) => (
-              <div className="form-row" key={i} style={{ marginBottom: 10 }}>
-                <div className="field">
-                  <label>Name</label>
-                  <input
-                    value={s.name}
-                    onChange={(e) => updMcp(i, { name: e.target.value })}
-                    placeholder="github"
-                  />
+              <div key={i} style={{ marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
+                <div className="form-row">
+                  <div className="field">
+                    <label>Name</label>
+                    <input
+                      value={s.name}
+                      onChange={(e) => updMcp(i, { name: e.target.value })}
+                      placeholder="ms365"
+                    />
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>URL (http/sse — blank for stdio)</label>
+                    <input
+                      value={s.url}
+                      onChange={(e) => updMcp(i, { url: e.target.value })}
+                      placeholder="https://example.com/mcp"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Stdio command (blank for URL)</label>
+                    <input
+                      value={s.command}
+                      onChange={(e) => updMcp(i, { command: e.target.value })}
+                      placeholder="ms-365-mcp-server"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Bearer token (optional)</label>
+                    <input
+                      type="password"
+                      value={s.authToken}
+                      onChange={(e) => updMcp(i, { authToken: e.target.value })}
+                      placeholder="none / OAuth"
+                    />
+                  </div>
+                  <button className="btn btn-danger" onClick={() => removeMcp(i)}>
+                    Remove
+                  </button>
                 </div>
-                <div className="field" style={{ flex: 1 }}>
-                  <label>URL (http/sse endpoint)</label>
+                <div className="field" style={{ marginTop: 8 }}>
+                  <label>
+                    {'Extra args ({{OWNER_EMAIL}}/{{OWNER_NAME}}/{{TOKEN}} substituted per agent)'}
+                  </label>
                   <input
-                    value={s.url}
-                    onChange={(e) => updMcp(i, { url: e.target.value })}
-                    placeholder="https://example.com/mcp"
+                    value={s.extraArgs}
+                    onChange={(e) => updMcp(i, { extraArgs: e.target.value })}
+                    placeholder="--env KEY={{OWNER_EMAIL}} --args --flag"
                     style={{ width: '100%' }}
                   />
                 </div>
-                <div className="field">
-                  <label>Bearer token (optional)</label>
-                  <input
-                    type="password"
-                    value={s.authToken}
-                    onChange={(e) => updMcp(i, { authToken: e.target.value })}
-                    placeholder="none / OAuth"
-                  />
-                </div>
-                <button className="btn btn-danger" onClick={() => removeMcp(i)}>
-                  Remove
-                </button>
               </div>
             ))}
             <div className="btn-row">
@@ -365,6 +390,12 @@ export default function Containers() {
                 {'Token env-key pattern (written to the agent .env; {{NAME_UPPER}} substituted; blank = never)'}
               </label>
               <input value={mcpEnvKey} onChange={(e) => setMcpEnvKey(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>
+                {'MCP sign-in command (optional device-code flow; runs detached, output to {{LOG}}; shows a sign-in button on agent pages)'}
+              </label>
+              <textarea rows={3} value={mcpLogin} onChange={(e) => setMcpLogin(e.target.value)} />
             </div>
 
             <div className="btn-row" style={{ marginTop: 18 }}>

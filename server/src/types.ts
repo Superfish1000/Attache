@@ -51,8 +51,16 @@ export interface ContainerFileDef {
 export interface McpServerDef {
   /** Config key / identifier inside the agent runtime. */
   name: string
-  /** HTTP/SSE endpoint URL. */
+  /** HTTP/SSE endpoint URL (leave empty for stdio/command servers). */
   url: string
+  /** Stdio launch command (leave empty for URL servers). */
+  command: string
+  /**
+   * Extra template text appended per server (e.g. --env/--args flags).
+   * Placeholders substituted like the provision template, incl.
+   * {{OWNER_EMAIL}} / {{OWNER_NAME}} for per-agent identity pinning.
+   */
+  extraArgs: string
   /**
    * Optional bearer/API token. Written into the agent's data-dir .env under
    * the definition's mcpTokenEnvKey pattern before provisioning, and available
@@ -90,6 +98,14 @@ export interface ContainerDef {
    * Hermes reads MCP_{{NAME_UPPER}}_API_KEY. Empty = never write tokens.
    */
   mcpTokenEnvKey: string
+  /**
+   * Optional interactive-auth bootstrap (e.g. an OAuth device-code login),
+   * run detached in the container via sh -c. Same placeholders as the
+   * provision template plus {{LOG}} — an in-container file path the command
+   * should redirect output to; Attache tails it from the host and shows it
+   * (device codes, URLs) to the user. Empty = no sign-in button.
+   */
+  mcpLoginCommand: string
   createdAt: string
 }
 

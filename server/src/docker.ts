@@ -1,5 +1,6 @@
 import Docker from 'dockerode'
-import { resolve } from 'node:path'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { Writable } from 'node:stream'
 import type { Agent } from './types.js'
 import { agentDir, upsertAgentEnv } from './agents.js'
@@ -139,6 +140,47 @@ export async function bounceDashboard(agentId: string): Promise<void> {
   }
 }
 
+/**
+ * Kicks off the definition's interactive-auth bootstrap (device-code login)
+ * detached inside the container, then tails its log file from the host side
+ * and returns whatever appeared (sign-in URL + code). The login process keeps
+ * polling in the container until the user completes it in a browser.
+ */
+export async function startMcpLogin(
+  agent: Agent,
+  owner: { email: string; name: string } | undefined,
+): Promise<string> {
+  const def = db.containers.find((c) => c.id === agent.containerId)
+  if (!def?.mcpLoginCommand.trim()) throw new Error('no MCP sign-in command on this definition')
+  const logName = '.attache-mcp-login.log'
+  const logInContainer = `${agent.config.mountPath.replace(/\/$/, '')}/${logName}`
+  const logOnHost = join(agentDir(agent.id), logName)
+  try {
+    rmSync(logOnHost, { force: true })
+  } catch {
+    // stale log removal is best-effort
+  }
+  const rendered = def.mcpLoginCommand
+    .replaceAll('{{OWNER_EMAIL}}', owner?.email ?? '')
+    .replaceAll('{{OWNER_NAME}}', owner?.name ?? '')
+    .replaceAll('{{LOG}}', logInContainer)
+  const exec = await getDocker()
+    .getContainer(nameFor(agent.id))
+    .exec({ Cmd: ['sh', '-c', `nohup sh -c '${rendered.replaceAll("'", "'\\''")}' >/dev/null 2>&1 &`], AttachStdout: false, AttachStderr: false })
+  await exec.start({ Detach: true })
+  // tail the host-side log for the device code (login itself runs for minutes)
+  for (let tick = 0; tick < 20; tick++) {
+    await new Promise((res) => setTimeout(res, 1000))
+    if (existsSync(logOnHost)) {
+      const text = readFileSync(logOnHost, 'utf8').trim()
+      if (text.length > 40) return text.slice(0, 1500)
+    }
+  }
+  return existsSync(logOnHost)
+    ? readFileSync(logOnHost, 'utf8').slice(0, 1500) || 'sign-in started — output pending, retry in a moment'
+    : 'sign-in started — no output yet, retry in a moment'
+}
+
 export interface McpProvisionResult {
   name: string
   ok: boolean
@@ -154,6 +196,7 @@ export interface McpProvisionResult {
 export async function provisionMcpServers(agent: Agent): Promise<McpProvisionResult[]> {
   const def = db.containers.find((c) => c.id === agent.containerId)
   if (!def?.mcpProvisionCommand.trim() || def.mcpServers.length === 0) return []
+  const owner = db.users.find((u) => u.id === agent.userId)
   const container = getDocker().getContainer(nameFor(agent.id))
   const results: McpProvisionResult[] = []
   for (const server of def.mcpServers) {
@@ -164,10 +207,15 @@ export async function provisionMcpServers(agent: Agent): Promise<McpProvisionRes
       const envKey = def.mcpTokenEnvKey.replaceAll('{{NAME_UPPER}}', nameUpper)
       upsertAgentEnv(agent.id, { [envKey]: server.authToken })
     }
-    const cmd = def.mcpProvisionCommand
-      .replaceAll('{{NAME}}', server.name)
-      .replaceAll('{{URL}}', server.url)
-      .replaceAll('{{TOKEN}}', server.authToken)
+    const fill = (tpl: string) =>
+      tpl
+        .replaceAll('{{NAME}}', server.name)
+        .replaceAll('{{URL}}', server.url)
+        .replaceAll('{{COMMAND}}', server.command)
+        .replaceAll('{{TOKEN}}', server.authToken)
+        .replaceAll('{{OWNER_EMAIL}}', owner?.email ?? '')
+        .replaceAll('{{OWNER_NAME}}', owner?.name ?? '')
+    const cmd = fill(def.mcpProvisionCommand).replaceAll('{{EXTRA}}', fill(server.extraArgs))
     try {
       const exec = await container.exec({
         Cmd: ['sh', '-c', cmd],

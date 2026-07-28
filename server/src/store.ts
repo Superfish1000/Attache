@@ -56,8 +56,13 @@ const HERMES_FILES = [
 export const HERMES_MCP_TOKEN_ENV_KEY = 'MCP_{{NAME_UPPER}}_API_KEY'
 
 export const HERMES_MCP_PROVISION =
+  // printf feeds the non-TTY "Enable all N tools?" prompt (EOF = cancel)
   'runuser -u hermes -- env HOME=/opt/data /opt/hermes/.venv/bin/hermes mcp remove {{NAME}} >/dev/null 2>&1; ' +
-  'runuser -u hermes -- env HOME=/opt/data /opt/hermes/.venv/bin/hermes mcp add {{NAME}} --url {{URL}}'
+  'if [ -n "{{COMMAND}}" ]; then ' +
+  'printf "y\\n" | runuser -u hermes -- env HOME=/opt/data /opt/hermes/.venv/bin/hermes mcp add {{NAME}} --command {{COMMAND}} {{EXTRA}}; ' +
+  'else ' +
+  'printf "y\\n" | runuser -u hermes -- env HOME=/opt/data /opt/hermes/.venv/bin/hermes mcp add {{NAME}} --url {{URL}} {{EXTRA}}; ' +
+  'fi'
 
 const defaults = (): DB => ({
   users: [],
@@ -96,8 +101,11 @@ function load(): { db: DB; migrated: boolean } {
     ) => ({
       ...c,
       mcpServers: (c.mcpServers ?? []).map(
-        (s: Omit<McpServerDef, 'authToken'> & { authToken?: string }) => ({
-          ...s,
+        (s: Partial<McpServerDef> & { name: string }) => ({
+          name: s.name,
+          url: s.url ?? '',
+          command: s.command ?? '',
+          extraArgs: s.extraArgs ?? '',
           authToken: s.authToken ?? '',
         }),
       ),
@@ -105,6 +113,7 @@ function load(): { db: DB; migrated: boolean } {
         c.mcpProvisionCommand ?? (c.name === 'Hermes' ? HERMES_MCP_PROVISION : ''),
       mcpTokenEnvKey:
         c.mcpTokenEnvKey ?? (c.name === 'Hermes' ? HERMES_MCP_TOKEN_ENV_KEY : ''),
+      mcpLoginCommand: c.mcpLoginCommand ?? '',
     }),
   )
   let defaultContainerId: string = rd.defaultContainerId ?? ''
@@ -122,6 +131,7 @@ function load(): { db: DB; migrated: boolean } {
       mcpServers: [],
       mcpProvisionCommand: HERMES_MCP_PROVISION,
       mcpTokenEnvKey: HERMES_MCP_TOKEN_ENV_KEY,
+      mcpLoginCommand: '',
       createdAt: new Date().toISOString(),
     }
     containers = [def]

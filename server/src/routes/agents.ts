@@ -20,6 +20,7 @@ import {
   provisionMcpServers,
   removeAgentContainer,
   startAgentContainer,
+  startMcpLogin,
   stopAgentContainer,
 } from '../docker.js'
 import { canAccessAgent, requireAdmin } from '../auth.js'
@@ -330,6 +331,39 @@ export default async function agentRoutes(app: FastifyInstance) {
       if (!reply.raw.writableEnded) reply.raw.end()
     }
     return reply
+  })
+
+  /** Owner-visible MCP facts: configured servers + whether a sign-in flow exists. */
+  app.get('/:id/mcp/info', async (req, reply) => {
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    const def = db.containers.find((c) => c.id === agent.containerId)
+    return {
+      servers: (def?.mcpServers ?? []).map((s) => s.name),
+      hasLogin: Boolean(def?.mcpLoginCommand.trim()),
+    }
+  })
+
+  /**
+   * Owner-accessible: start the definition's interactive MCP sign-in (device
+   * code flow) and return the captured instructions.
+   */
+  app.post('/:id/mcp/login', async (req, reply) => {
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    if (!(await dockerAvailable())) {
+      return reply.code(503).send({ error: 'Docker daemon is not available' })
+    }
+    const info = await containerInfo(agent.id)
+    if (!info.exists || !info.running) {
+      return reply.code(409).send({ error: 'agent container is not running — start it first' })
+    }
+    try {
+      const owner = db.users.find((u) => u.id === agent.userId)
+      return { output: await startMcpLogin(agent, owner) }
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message })
+    }
   })
 
   /** Re-run the definition's MCP provisioning and return per-server results. */
