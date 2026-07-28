@@ -68,13 +68,19 @@ At the top of the definition editor, **Image source** chooses between a **standa
 
 ### Worked example: Microsoft 365 per user
 
-`images/hermes-m365/Dockerfile` bakes [`@softeria/ms-365-mcp-server`](https://github.com/softeria/ms-365-mcp-server) into the Hermes image — the same content ships in the stock Hermes definition's Dockerfile field, so **Build image** produces it from the GUI. Point the definition's image at `hermes-m365`, add an MCP server row — name `ms365`, stdio command `ms-365-mcp-server`, extra args `--env MS365_MCP_ORG_MODE=true --env MS365_MCP_EXPECTED_USERNAME={{OWNER_EMAIL}} --env MS365_MCP_TOKEN_CACHE_PATH=/opt/data/m365/token-cache.json --env MS365_MCP_SELECTED_ACCOUNT_PATH=/opt/data/m365/selected-account.json --args --org-mode` (`EXPECTED_USERNAME` is the identity pin) — and set the **MCP sign-in command** to:
+`images/hermes-m365/Dockerfile` bakes [`@softeria/ms-365-mcp-server`](https://github.com/softeria/ms-365-mcp-server) into the Hermes image — the same content ships in the stock Hermes definition's Dockerfile field, so **Build image** produces it from the GUI. Point the definition's image at `hermes-m365`, add an MCP server row — name `ms365`, stdio command `ms-365-mcp-server`, extra args:
 
 ```
-mkdir -p /opt/data/m365 /opt/data/.ms-365-mcp-server && chown -R hermes /opt/data/m365 /opt/data/.ms-365-mcp-server 2>/dev/null; runuser -u hermes -- env HOME=/opt/data MS365_MCP_ORG_MODE=true MS365_MCP_EXPECTED_USERNAME={{OWNER_EMAIL}} MS365_MCP_TOKEN_CACHE_PATH=/opt/data/m365/token-cache.json MS365_MCP_SELECTED_ACCOUNT_PATH=/opt/data/m365/selected-account.json ms-365-mcp-server --login --org-mode > {{LOG}} 2>&1
+--env MS365_MCP_ORG_MODE=true --env MS365_MCP_EXPECTED_USERNAME={{OWNER_EMAIL}} --env MS365_MCP_TOKEN_CACHE_PATH=/opt/data/m365/token-cache.json --env MS365_MCP_SELECTED_ACCOUNT_PATH=/opt/data/m365/selected-account.json --env MS365_MCP_LOG_DIR=/opt/data/m365/logs --args --org-mode
 ```
 
-The root-run `mkdir`/`chown` prelude matters on Linux hosts: Attaché's execs (and the Hermes gateway) run as root, so tool state dirs like `.ms-365-mcp-server` can end up root-owned — the login then drops to the `hermes` user and dies with `EACCES: permission denied, mkdir`. Prepping ownership before `runuser` self-heals that on every sign-in. (A Python `RuntimeError: Event loop is closed` traceback after a `── name: OK ──` provision result is Hermes' own teardown noise, not a failure.)
+(`EXPECTED_USERNAME` is the identity pin.) **All three path envs are load-bearing** — miss `TOKEN_CACHE_PATH` and the server falls back to a root-owned dir inside the npm package: token writes fail silently, `verify_login` still reports success, and every real tool call returns "No accounts found". Set the **MCP sign-in command** to:
+
+```
+mkdir -p /opt/data/m365/logs /opt/data/.ms-365-mcp-server && chown -R hermes /opt/data/m365 /opt/data/.ms-365-mcp-server 2>/dev/null; runuser -u hermes -- env HOME=/opt/data MS365_MCP_ORG_MODE=true MS365_MCP_EXPECTED_USERNAME={{OWNER_EMAIL}} MS365_MCP_TOKEN_CACHE_PATH=/opt/data/m365/token-cache.json MS365_MCP_SELECTED_ACCOUNT_PATH=/opt/data/m365/selected-account.json MS365_MCP_LOG_DIR=/opt/data/m365/logs ms-365-mcp-server --login --org-mode > {{LOG}} 2>&1
+```
+
+The root-run `mkdir`/`chown` prelude matters on Linux hosts: Attaché's execs (and the Hermes gateway) run as root, so tool state dirs can end up root-owned — the login then drops to the `hermes` user and dies with `EACCES`. Prepping ownership before `runuser` self-heals that on every sign-in. Two more field notes: (1) a Python `RuntimeError: Event loop is closed` traceback after a `── name: OK ──` provision result is Hermes' own teardown noise, not a failure; (2) **the definition is the source of truth** — provisioning re-adds servers from it at every container start, so runtime-side hand-fixes (`hermes config set mcp_servers...`) get wiped; put env fixes in the definition's extra args. After completing a sign-in, restart the container (or the MCP server) — a server that was already running keeps its pre-login account state in memory.
 
 Each agent then gets an M365 integration that can only act as its owner; the owner clicks **MCP sign-in** once, enters the device code at Microsoft, and the token persists in their agent's data dir across regenerates. Existing agents need their config image updated (Agent page → Configuration) plus a Regenerate.
 
