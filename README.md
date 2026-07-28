@@ -60,6 +60,7 @@ Container definitions are the blueprints agents are stamped from:
 
 - **Runtime**: image, command, data mount path, auto-mapped container ports, memory/CPU limits, definition-level env (applied to containers at start; per-agent env wins).
 - **Behavior files**: the file list every agent of this definition exposes as editors on its page — key, label, path (relative to the agent's data dir), hint, and an optional **template** written at agent creation. Templates substitute `{{AGENT_NAME}}` and `{{OWNER_NAME}}`.
+- **MCP servers**: a list of Model Context Protocol servers (name + URL) pre-loaded into every agent of the definition, plus a runtime-specific *provision command template* (`{{NAME}}`/`{{URL}}` substituted, run inside the container) describing how that runtime ingests one server — the stock Hermes definition uses `hermes mcp add`. Provisioning runs automatically at container start/regenerate and on demand via the agent page's **Provision MCP** button, which shows per-server results. Note Hermes only persists servers it can actually reach at add time.
 - One definition is the **default** for new agents; agents can be switched between definitions later (their file list follows).
 
 The stock Hermes definition exposes: Soul (`SOUL.md`), Memory (`memories/MEMORY.md`), User profile (`memories/USER.md`), Agents (`AGENTS.md`), Tools (`TOOLS.md`), Context (`.hermes.md`).
