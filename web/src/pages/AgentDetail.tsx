@@ -234,6 +234,16 @@ export default function AgentDetail() {
     }
   }
 
+  const mcpSignInStatus = async () => {
+    setErr('')
+    try {
+      const res = await api.agents.mcpLoginLog(id)
+      setLogs(res.output)
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
   const provisionMcp = async () => {
     setBusy(true)
     setErr('')
@@ -399,6 +409,16 @@ export default function AgentDetail() {
               onClick={mcpSignIn}
             >
               MCP sign-in
+            </button>
+          )}
+          {mcpInfo?.hasLogin && (
+            <button
+              className="btn"
+              disabled={!dockerUp}
+              title="Show the last sign-in's output without restarting it — restarting invalidates a pending device code"
+              onClick={mcpSignInStatus}
+            >
+              Sign-in status
             </button>
           )}
           {admin &&

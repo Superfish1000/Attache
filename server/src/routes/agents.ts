@@ -19,6 +19,7 @@ import {
   dockerAvailable,
   provisionMcpServers,
   readAgentFileViaDocker,
+  readMcpLoginLog,
   writeAgentFileViaDocker,
   removeAgentContainer,
   startAgentContainer,
@@ -388,6 +389,18 @@ export default async function agentRoutes(app: FastifyInstance) {
     } catch (err) {
       return reply.code(400).send({ error: (err as Error).message })
     }
+  })
+
+  /**
+   * Owner-accessible: tail of the last sign-in's output WITHOUT restarting
+   * the flow — pressing sign-in again invalidates the pending device code,
+   * so status checks must not re-run it.
+   */
+  app.get('/:id/mcp/login-log', async (req, reply) => {
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    const output = await readMcpLoginLog(agent)
+    return { output: output || 'no sign-in output found — run MCP sign-in first' }
   })
 
   /** Re-run the definition's MCP provisioning and return per-server results. */

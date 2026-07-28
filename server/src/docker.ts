@@ -424,6 +424,21 @@ export async function startMcpLogin(
   return (await readLog())?.slice(0, 1500) || 'sign-in started — no output yet, retry in a moment'
 }
 
+/**
+ * Tail of the last MCP sign-in output without restarting the flow —
+ * host-first, docker fallback for container-owned files.
+ */
+export async function readMcpLoginLog(agent: Agent): Promise<string> {
+  const logName = '.attache-mcp-login.log'
+  try {
+    const p = join(agentDir(agent.id), logName)
+    if (existsSync(p)) return readFileSync(p, 'utf8').slice(-1500)
+  } catch {
+    // EACCES — container-owned; fall through
+  }
+  return (await readAgentFileViaDocker(agent, logName))?.slice(-1500) ?? ''
+}
+
 export interface McpProvisionResult {
   name: string
   ok: boolean

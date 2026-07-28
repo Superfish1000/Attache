@@ -104,6 +104,7 @@ export const api = {
     mcpInfo: (id: string) => req<McpInfo>(`/api/agents/${id}/mcp/info`),
     mcpLogin: (id: string) =>
       req<{ output: string }>(`/api/agents/${id}/mcp/login`, { method: 'POST' }),
+    mcpLoginLog: (id: string) => req<{ output: string }>(`/api/agents/${id}/mcp/login-log`),
   },
   o365: {
     settings: () => req<O365SettingsView>('/api/o365/settings'),
