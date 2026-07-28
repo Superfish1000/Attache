@@ -187,7 +187,7 @@ Creates the account as an admin, or — if the email already exists — promotes
 
 - `data/` is gitignored and holds everything sensitive: user records (hashes only), sessions, agent souls/memories, and the definition env (which contains your model API key). Don't commit it.
 - Dashboard credentials are provisioned as hashes; plaintext passwords exist only in transit during login/set-password requests.
-- Attaché binds `127.0.0.1` by default. If you expose it on a LAN, put TLS and real network controls in front of it first.
+- The GUI listens on all interfaces (LAN-reachable) so other machines can use it; the API stays loopback-only and is reached through the GUI's proxy. On untrusted networks, firewall port 7700 (and the agent port range) or put TLS in front.
 
 ## Roadmap
 
