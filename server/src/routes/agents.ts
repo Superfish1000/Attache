@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { db, save } from '../store.js'
 import {
   agentFileDefs,
+  containerDefFor,
   createAgent,
   deleteAgent,
   getCronJob,
@@ -16,7 +17,6 @@ import {
   containerInfo,
   containerLogs,
   dockerAvailable,
-  execAgentChat,
   removeAgentContainer,
   startAgentContainer,
   stopAgentContainer,
@@ -251,38 +251,83 @@ export default async function agentRoutes(app: FastifyInstance) {
   })
 
   /**
-   * Chat with the agent. Runs the agent CLI inside the container (this Hermes
-   * build has no HTTP inference endpoint); conversation context is held by the
-   * agent itself in a per-user named session, so only the new message is sent.
+   * Chat with the agent through its OpenAI-compatible gateway — a warm,
+   * long-running process inside the container, so no per-message cold start.
+   * Conversation history comes from the client; the stream is SSE passthrough.
    */
   app.post('/:id/chat', async (req, reply) => {
     const agent = accessibleAgent(req, reply)
     if (!agent) return reply
-    const { messages } = (req.body ?? {}) as {
+    const { messages, stream } = (req.body ?? {}) as {
       messages?: Array<{ role: string; content: string }>
+      stream?: boolean
     }
     if (!Array.isArray(messages) || messages.length === 0) {
       return reply.code(400).send({ error: 'messages array required' })
     }
-    const last = messages[messages.length - 1]
-    const text = String(last?.content ?? '').trim()
-    if (!text || last.role !== 'user') {
-      return reply.code(400).send({ error: 'last message must be a non-empty user message' })
+    const merged = {
+      ...db.settings.docker.defaultEnv,
+      ...(containerDefFor(agent)?.env ?? {}),
+      ...agent.config.env,
     }
-    if (!(await dockerAvailable())) {
-      return reply.code(503).send({ error: 'Docker daemon is not available' })
+    const gatewayPort = merged.API_SERVER_PORT ?? '8642'
+    const hostPort = agent.config.ports[gatewayPort] ?? Object.values(agent.config.ports)[0]
+    if (!hostPort) {
+      return reply.code(400).send({ error: 'no gateway port mapped for this agent' })
     }
-    const info = await containerInfo(agent.id)
-    if (!info.exists || !info.running) {
-      return reply.code(409).send({ error: 'agent container is not running — start it first' })
-    }
+    let upstream: Response
     try {
-      const content = await execAgentChat(agent, text, req.user!.id)
-      return { content }
-    } catch (err) {
-      req.log.error(err)
-      return reply.code(502).send({ error: `agent chat failed: ${(err as Error).message}` })
+      upstream = await fetch(`http://127.0.0.1:${hostPort}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(merged.API_SERVER_KEY ? { authorization: `Bearer ${merged.API_SERVER_KEY}` } : {}),
+        },
+        body: JSON.stringify({
+          model: 'hermes-agent',
+          messages: messages.map((m) => ({ role: m.role, content: String(m.content) })),
+          stream: Boolean(stream),
+        }),
+      })
+    } catch {
+      return reply.code(502).send({
+        error:
+          'agent gateway unreachable — the container may be stopped, or still booting (the gateway takes about a minute after start)',
+      })
     }
+    if (!stream || !upstream.ok || !upstream.body) {
+      const text = await upstream.text()
+      return reply
+        .code(upstream.status)
+        .header('content-type', upstream.headers.get('content-type') ?? 'application/json')
+        .send(text)
+    }
+    // hijack: from here the raw socket is ours — fastify must not try to reply on errors
+    reply.hijack()
+    reply.raw.writeHead(200, {
+      'content-type': upstream.headers.get('content-type') ?? 'text/event-stream',
+      'cache-control': 'no-cache',
+    })
+    const reader = upstream.body.getReader()
+    let clientGone = false
+    const onClose = () => {
+      clientGone = true
+      reader.cancel().catch(() => undefined) // stop the agent generating for a dead client
+    }
+    req.raw.on('close', onClose)
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done || clientGone) break
+        reply.raw.write(Buffer.from(value))
+      }
+    } catch {
+      // upstream died mid-stream — end with what we have
+    } finally {
+      req.raw.off('close', onClose)
+      if (!reply.raw.writableEnded) reply.raw.end()
+    }
+    return reply
   })
 
   app.post('/:id/container/:action', async (req, reply) => {

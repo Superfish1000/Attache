@@ -333,6 +333,17 @@ export default function AgentDetail() {
           <button className="btn" disabled={!dockerUp} onClick={fetchLogs}>
             {logs === null ? 'View logs' : 'Refresh logs'}
           </button>
+          {container?.running && agent.config.ports['9119'] && (
+            <a
+              className="btn"
+              href={`http://localhost:${agent.config.ports['9119']}`}
+              target="_blank"
+              rel="noreferrer"
+              title="Hermes' own web dashboard for this agent"
+            >
+              Open dashboard ↗
+            </a>
+          )}
           {admin && (
             <button
               className="btn btn-danger"
