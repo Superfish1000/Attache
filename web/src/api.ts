@@ -29,11 +29,14 @@ async function req<T>(url: string, init?: RequestInit): Promise<T> {
     }
     let msg = `request failed (${res.status})`
     try {
-      const body = (await res.json()) as { error?: string }
-      if (body.error) msg = body.error
+      const body = (await res.json()) as { error?: string; message?: string }
+      // fastify's default 500 body puts the useful text in `message`
+      if (body.error) msg = body.message && body.message !== body.error ? `${body.error}: ${body.message}` : body.error
+      else if (body.message) msg = body.message
     } catch {
       // non-JSON error body
     }
+    msg += ` [${res.status} ${url.replace(/^\/api/, '')}]`
     throw new Error(msg)
   }
   if (res.status === 204) return undefined as T
