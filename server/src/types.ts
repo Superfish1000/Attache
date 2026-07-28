@@ -53,6 +53,13 @@ export interface McpServerDef {
   name: string
   /** HTTP/SSE endpoint URL. */
   url: string
+  /**
+   * Optional bearer/API token. Written into the agent's data-dir .env under
+   * the definition's mcpTokenEnvKey pattern before provisioning, and available
+   * to the provision template as {{TOKEN}}. Empty = unauthenticated (or OAuth
+   * completed interactively in the runtime's own UI).
+   */
+  authToken: string
 }
 
 /** A reusable container setup: image/runtime defaults + the behavior files agents expose. */
@@ -77,6 +84,12 @@ export interface ContainerDef {
    * privileges inside the template if the runtime needs it. Empty = disabled.
    */
   mcpProvisionCommand: string
+  /**
+   * Env-var key pattern for MCP tokens written to the agent's .env
+   * ({{NAME_UPPER}} = server name uppercased/sanitized). Runtime-specific —
+   * Hermes reads MCP_{{NAME_UPPER}}_API_KEY. Empty = never write tokens.
+   */
+  mcpTokenEnvKey: string
   createdAt: string
 }
 

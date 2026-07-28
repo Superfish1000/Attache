@@ -43,6 +43,7 @@ export interface ContainerFileDef {
 export interface McpServerDef {
   name: string
   url: string
+  authToken: string
 }
 
 export interface McpProvisionResult {
@@ -64,6 +65,7 @@ export interface ContainerDef {
   files: ContainerFileDef[]
   mcpServers: McpServerDef[]
   mcpProvisionCommand: string
+  mcpTokenEnvKey: string
   createdAt: string
 }
 

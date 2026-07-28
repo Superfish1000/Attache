@@ -116,6 +116,17 @@ export function syncAgentPorts(agent: Agent): boolean {
   return true
 }
 
+/** Upserts KEY=VALUE lines into the agent's data-dir .env, preserving others. */
+export function upsertAgentEnv(agentId: string, entries: Record<string, string>): void {
+  const envPath = join(agentDir(agentId), '.env')
+  const lines = existsSync(envPath) ? readFileSync(envPath, 'utf8').split(/\r?\n/) : []
+  const keys = new Set(Object.keys(entries))
+  const keep = lines.filter((l) => l.trim() !== '' && !keys.has(l.split('=')[0]))
+  for (const [k, v] of Object.entries(entries)) keep.push(`${k}=${v}`)
+  mkdirSync(agentDir(agentId), { recursive: true })
+  writeFileSync(envPath, keep.join('\n') + '\n')
+}
+
 /**
  * Provisions the owner's dashboard login into the agent's `.env` (read by
  * Hermes at startup): username = owner email, password as a Hermes-format

@@ -19,6 +19,7 @@ export default function Containers() {
   const [files, setFiles] = useState<ContainerFileDef[]>([])
   const [mcpServers, setMcpServers] = useState<McpServerDef[]>([])
   const [mcpCmd, setMcpCmd] = useState('')
+  const [mcpEnvKey, setMcpEnvKey] = useState('')
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -36,6 +37,7 @@ export default function Containers() {
     setFiles(def.files.map((f) => ({ ...f })))
     setMcpServers(def.mcpServers.map((s) => ({ ...s })))
     setMcpCmd(def.mcpProvisionCommand)
+    setMcpEnvKey(def.mcpTokenEnvKey)
   }, [])
 
   const reload = useCallback(
@@ -102,6 +104,7 @@ export default function Containers() {
         files,
         mcpServers,
         mcpProvisionCommand: mcpCmd,
+        mcpTokenEnvKey: mcpEnvKey,
       })
       flash(`${updated.name} saved`)
       reload()
@@ -148,7 +151,7 @@ export default function Containers() {
   const updMcp = (i: number, patch: Partial<McpServerDef>) =>
     setMcpServers((ss) => ss.map((s, j) => (j === i ? { ...s, ...patch } : s)))
 
-  const addMcp = () => setMcpServers((ss) => [...ss, { name: '', url: '' }])
+  const addMcp = () => setMcpServers((ss) => [...ss, { name: '', url: '', authToken: '' }])
 
   const removeMcp = (i: number) => setMcpServers((ss) => ss.filter((_, j) => j !== i))
 
@@ -334,6 +337,15 @@ export default function Containers() {
                     style={{ width: '100%' }}
                   />
                 </div>
+                <div className="field">
+                  <label>Bearer token (optional)</label>
+                  <input
+                    type="password"
+                    value={s.authToken}
+                    onChange={(e) => updMcp(i, { authToken: e.target.value })}
+                    placeholder="none / OAuth"
+                  />
+                </div>
                 <button className="btn btn-danger" onClick={() => removeMcp(i)}>
                   Remove
                 </button>
@@ -347,6 +359,12 @@ export default function Containers() {
             <div className="field" style={{ marginTop: 12 }}>
               <label>Provision command template (runtime-specific; blank = disabled)</label>
               <textarea rows={3} value={mcpCmd} onChange={(e) => setMcpCmd(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>
+                {'Token env-key pattern (written to the agent .env; {{NAME_UPPER}} substituted; blank = never)'}
+              </label>
+              <input value={mcpEnvKey} onChange={(e) => setMcpEnvKey(e.target.value)} />
             </div>
 
             <div className="btn-row" style={{ marginTop: 18 }}>

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import type { Agent, ContainerDef, Session, Settings, User } from './types.js'
+import type { Agent, ContainerDef, McpServerDef, Session, Settings, User } from './types.js'
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 export const DATA_DIR = process.env.ATTACHE_DATA_DIR ?? join(ROOT, 'data')
@@ -52,6 +52,9 @@ const HERMES_FILES = [
  * re-provisioning idempotent; runuser drops root so config files stay owned
  * by the hermes user (root-owned files break the supervised gateway).
  */
+/** Hermes reads MCP bearer tokens from .env under this key pattern. */
+export const HERMES_MCP_TOKEN_ENV_KEY = 'MCP_{{NAME_UPPER}}_API_KEY'
+
 export const HERMES_MCP_PROVISION =
   'runuser -u hermes -- env HOME=/opt/data /opt/hermes/.venv/bin/hermes mcp remove {{NAME}} >/dev/null 2>&1; ' +
   'runuser -u hermes -- env HOME=/opt/data /opt/hermes/.venv/bin/hermes mcp add {{NAME}} --url {{URL}}'
@@ -87,11 +90,21 @@ function load(): { db: DB; migrated: boolean } {
   // migrate pre-definition DBs: fold the old settings.docker defaults into a Hermes definition
   // (with mcp-field backfill for definitions saved before MCP support)
   let containers: ContainerDef[] = (raw.containers ?? []).map(
-    (c: Omit<ContainerDef, 'mcpServers' | 'mcpProvisionCommand'> & Partial<ContainerDef>) => ({
+    (
+      c: Omit<ContainerDef, 'mcpServers' | 'mcpProvisionCommand' | 'mcpTokenEnvKey'> &
+        Partial<ContainerDef>,
+    ) => ({
       ...c,
-      mcpServers: c.mcpServers ?? [],
+      mcpServers: (c.mcpServers ?? []).map(
+        (s: Omit<McpServerDef, 'authToken'> & { authToken?: string }) => ({
+          ...s,
+          authToken: s.authToken ?? '',
+        }),
+      ),
       mcpProvisionCommand:
         c.mcpProvisionCommand ?? (c.name === 'Hermes' ? HERMES_MCP_PROVISION : ''),
+      mcpTokenEnvKey:
+        c.mcpTokenEnvKey ?? (c.name === 'Hermes' ? HERMES_MCP_TOKEN_ENV_KEY : ''),
     }),
   )
   let defaultContainerId: string = rd.defaultContainerId ?? ''
@@ -108,6 +121,7 @@ function load(): { db: DB; migrated: boolean } {
       files: HERMES_FILES.map((f) => ({ ...f })),
       mcpServers: [],
       mcpProvisionCommand: HERMES_MCP_PROVISION,
+      mcpTokenEnvKey: HERMES_MCP_TOKEN_ENV_KEY,
       createdAt: new Date().toISOString(),
     }
     containers = [def]

@@ -96,8 +96,13 @@ function applyBody(def: ContainerDef, body: Partial<ContainerDef>): string | nul
         return `MCP server '${s.name}' needs an http(s) URL`
       }
       s.url = s.url.trim()
+      s.authToken = typeof s.authToken === 'string' ? s.authToken.trim() : ''
     }
     def.mcpServers = body.mcpServers
+  }
+  if (body.mcpTokenEnvKey !== undefined) {
+    if (typeof body.mcpTokenEnvKey !== 'string') return 'mcpTokenEnvKey must be a string'
+    def.mcpTokenEnvKey = body.mcpTokenEnvKey.trim()
   }
   if (body.mcpProvisionCommand !== undefined) {
     if (typeof body.mcpProvisionCommand !== 'string') {
@@ -130,6 +135,7 @@ export default async function containerDefRoutes(app: FastifyInstance) {
       files: [],
       mcpServers: [],
       mcpProvisionCommand: '',
+      mcpTokenEnvKey: '',
       createdAt: new Date().toISOString(),
     }
     const err = applyBody(def, (req.body ?? {}) as Partial<ContainerDef>)

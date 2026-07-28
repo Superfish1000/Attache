@@ -2,7 +2,7 @@ import Docker from 'dockerode'
 import { resolve } from 'node:path'
 import { Writable } from 'node:stream'
 import type { Agent } from './types.js'
-import { agentDir } from './agents.js'
+import { agentDir, upsertAgentEnv } from './agents.js'
 import { db } from './store.js'
 
 /** Fresh handle per call so a settings change takes effect without a restart. Construction is cheap. */
@@ -157,9 +157,17 @@ export async function provisionMcpServers(agent: Agent): Promise<McpProvisionRes
   const container = getDocker().getContainer(nameFor(agent.id))
   const results: McpProvisionResult[] = []
   for (const server of def.mcpServers) {
+    // pre-write the token to the agent's .env so runtimes that read it from
+    // there (hermes) find it and skip their interactive auth prompt
+    if (server.authToken && def.mcpTokenEnvKey.trim()) {
+      const nameUpper = server.name.toUpperCase().replace(/[^A-Z0-9_]/g, '_').replace(/^_+|_+$/g, '')
+      const envKey = def.mcpTokenEnvKey.replaceAll('{{NAME_UPPER}}', nameUpper)
+      upsertAgentEnv(agent.id, { [envKey]: server.authToken })
+    }
     const cmd = def.mcpProvisionCommand
       .replaceAll('{{NAME}}', server.name)
       .replaceAll('{{URL}}', server.url)
+      .replaceAll('{{TOKEN}}', server.authToken)
     try {
       const exec = await container.exec({
         Cmd: ['sh', '-c', cmd],
