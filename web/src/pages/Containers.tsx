@@ -225,7 +225,7 @@ export default function Containers() {
             </tr>
           </thead>
           <tbody>
-            {defs.map((d) => (
+            {[...defs].sort((a, b) => (a.id === defaultId ? -1 : b.id === defaultId ? 1 : 0)).map((d) => (
               <tr key={d.id}>
                 <td>
                   <a
