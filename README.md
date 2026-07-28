@@ -68,7 +68,16 @@ At the top of the definition editor, **Image source** chooses between a **standa
 
 ### Worked example: Microsoft 365 per user
 
-`images/hermes-m365/Dockerfile` bakes [`@softeria/ms-365-mcp-server`](https://github.com/softeria/ms-365-mcp-server) into the Hermes image — the same content ships in the stock Hermes definition's Dockerfile field, so **Build image** produces it from the GUI. Point the definition's image at `hermes-m365`, add an MCP server row — name `ms365`, stdio command `ms-365-mcp-server`, extra args setting `MS365_MCP_ORG_MODE`, `MS365_MCP_EXPECTED_USERNAME={{OWNER_EMAIL}}` (the identity pin) and token-cache paths under the agent's data dir — and set the sign-in command to `ms-365-mcp-server --login`. Each agent then gets an M365 integration that can only act as its owner; the owner clicks **MCP sign-in** once, enters the device code at Microsoft, and the token persists in their agent's data dir across regenerates. Existing agents need their config image updated (Agent page → Configuration) plus a Regenerate.
+`images/hermes-m365/Dockerfile` bakes [`@softeria/ms-365-mcp-server`](https://github.com/softeria/ms-365-mcp-server) into the Hermes image — the same content ships in the stock Hermes definition's Dockerfile field, so **Build image** produces it from the GUI. Point the definition's image at `hermes-m365`, add an MCP server row — name `ms365`, stdio command `ms-365-mcp-server`, extra args `--env MS365_MCP_ORG_MODE=true --env MS365_MCP_EXPECTED_USERNAME={{OWNER_EMAIL}} --env MS365_MCP_TOKEN_CACHE_PATH=/opt/data/m365/token-cache.json --env MS365_MCP_SELECTED_ACCOUNT_PATH=/opt/data/m365/selected-account.json --args --org-mode` (`EXPECTED_USERNAME` is the identity pin) — and set the **MCP sign-in command** to:
+
+```
+mkdir -p /opt/data/m365 /opt/data/.ms-365-mcp-server && chown -R hermes /opt/data/m365 /opt/data/.ms-365-mcp-server 2>/dev/null; runuser -u hermes -- env HOME=/opt/data MS365_MCP_ORG_MODE=true MS365_MCP_EXPECTED_USERNAME={{OWNER_EMAIL}} MS365_MCP_TOKEN_CACHE_PATH=/opt/data/m365/token-cache.json MS365_MCP_SELECTED_ACCOUNT_PATH=/opt/data/m365/selected-account.json ms-365-mcp-server --login --org-mode > {{LOG}} 2>&1
+```
+
+The root-run `mkdir`/`chown` prelude matters on Linux hosts: Attaché's execs (and the Hermes gateway) run as root, so tool state dirs like `.ms-365-mcp-server` can end up root-owned — the login then drops to the `hermes` user and dies with `EACCES: permission denied, mkdir`. Prepping ownership before `runuser` self-heals that on every sign-in. (A Python `RuntimeError: Event loop is closed` traceback after a `── name: OK ──` provision result is Hermes' own teardown noise, not a failure.)
+
+Each agent then gets an M365 integration that can only act as its owner; the owner clicks **MCP sign-in** once, enters the device code at Microsoft, and the token persists in their agent's data dir across regenerates. Existing agents need their config image updated (Agent page → Configuration) plus a Regenerate.
+
 - One definition is the **default** for new agents; agents can be switched between definitions later (their file list follows).
 
 The stock Hermes definition exposes: Soul (`SOUL.md`), Memory (`memories/MEMORY.md`), User profile (`memories/USER.md`), Agents (`AGENTS.md`), Tools (`TOOLS.md`), Context (`.hermes.md`).
