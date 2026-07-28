@@ -93,12 +93,17 @@ export function McpServersHelp() {
         <span className="mono">ms-365-mcp-server</span>):
       </p>
       <p className="mono" style={{ fontSize: 12 }}>
-        --env MS365_MCP_ORG_MODE=true --env MS365_MCP_EXPECTED_USERNAME={'{{OWNER_EMAIL}}'} --env
-        MS365_MCP_TOKEN_CACHE_PATH=/opt/data/m365/token-cache.json --args --org-mode
+        --env MS365_MCP_ORG_MODE=true MS365_MCP_EXPECTED_USERNAME={'{{OWNER_EMAIL}}'}{' '}
+        MS365_MCP_TOKEN_CACHE_PATH=/opt/data/m365/token-cache.json
+        MS365_MCP_SELECTED_ACCOUNT_PATH=/opt/data/m365/selected-account.json
+        MS365_MCP_LOG_DIR=/opt/data/m365/logs --args --org-mode
       </p>
       <p className="muted">
-        Heads-up: Hermes only persists servers it can reach at add time — after adding one, run{' '}
-        <b>Provision MCP</b> on an agent and read the per-server output.
+        <b>One</b> <span className="mono">--env</span> flag with space-separated KEY=VALUE pairs —
+        hermes silently keeps only the <i>last</i> <span className="mono">--env</span> if the flag
+        is repeated. <span className="mono">--args</span> must come last. Hermes also only persists
+        servers it can reach at add time — after adding one, run <b>Provision MCP</b> on an agent
+        and read the per-server output.
       </p>
     </div>
   )

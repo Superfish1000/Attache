@@ -471,7 +471,7 @@ export default function Containers() {
                   <input
                     value={s.extraArgs}
                     onChange={(e) => updMcp(i, { extraArgs: e.target.value })}
-                    placeholder="--env KEY={{OWNER_EMAIL}} --args --flag"
+                    placeholder="--env KEY={{OWNER_EMAIL}} KEY2=val --args --flag"
                     style={{ width: '100%' }}
                   />
                 </div>

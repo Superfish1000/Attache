@@ -71,10 +71,10 @@ At the top of the definition editor, **Image source** chooses between a **standa
 `images/hermes-m365/Dockerfile` bakes [`@softeria/ms-365-mcp-server`](https://github.com/softeria/ms-365-mcp-server) into the Hermes image — the same content ships in the stock Hermes definition's Dockerfile field, so **Build image** produces it from the GUI. Point the definition's image at `hermes-m365`, add an MCP server row — name `ms365`, stdio command `ms-365-mcp-server`, extra args:
 
 ```
---env MS365_MCP_ORG_MODE=true --env MS365_MCP_EXPECTED_USERNAME={{OWNER_EMAIL}} --env MS365_MCP_TOKEN_CACHE_PATH=/opt/data/m365/token-cache.json --env MS365_MCP_SELECTED_ACCOUNT_PATH=/opt/data/m365/selected-account.json --env MS365_MCP_LOG_DIR=/opt/data/m365/logs --args --org-mode
+--env MS365_MCP_ORG_MODE=true MS365_MCP_EXPECTED_USERNAME={{OWNER_EMAIL}} MS365_MCP_TOKEN_CACHE_PATH=/opt/data/m365/token-cache.json MS365_MCP_SELECTED_ACCOUNT_PATH=/opt/data/m365/selected-account.json MS365_MCP_LOG_DIR=/opt/data/m365/logs --args --org-mode
 ```
 
-(`EXPECTED_USERNAME` is the identity pin.) **All three path envs are load-bearing** — miss `TOKEN_CACHE_PATH` and the server falls back to a root-owned dir inside the npm package: token writes fail silently, `verify_login` still reports success, and every real tool call returns "No accounts found". Set the **MCP sign-in command** to:
+(`EXPECTED_USERNAME` is the identity pin.) **One `--env` flag, many `KEY=VALUE` words**: hermes' `mcp add --env` takes a space-separated list, and *repeating* the flag silently keeps only the last one — a field bug that cost hours (registrations kept only whichever env came last). `--args` must stay the final option. **All three path envs are load-bearing** — miss `TOKEN_CACHE_PATH` and the server falls back to a root-owned dir inside the npm package: token writes fail silently, `verify_login` still reports success, and every real tool call returns "No accounts found". Set the **MCP sign-in command** to:
 
 ```
 mkdir -p /opt/data/m365/logs /opt/data/.ms-365-mcp-server && chown -R hermes /opt/data/m365 /opt/data/.ms-365-mcp-server 2>/dev/null; runuser -u hermes -- env HOME=/opt/data MS365_MCP_ORG_MODE=true MS365_MCP_EXPECTED_USERNAME={{OWNER_EMAIL}} MS365_MCP_TOKEN_CACHE_PATH=/opt/data/m365/token-cache.json MS365_MCP_SELECTED_ACCOUNT_PATH=/opt/data/m365/selected-account.json MS365_MCP_LOG_DIR=/opt/data/m365/logs ms-365-mcp-server --login --org-mode > {{LOG}} 2>&1
