@@ -72,7 +72,14 @@ export default async function updateRoutes(app: FastifyInstance) {
     try {
       // Untracked files don't block a pull; git itself errors if one would be overwritten.
       const dirtyOut = await git('status', '--porcelain', '--untracked-files=no')
-      let dirtyFiles = dirtyOut ? dirtyOut.split('\n').map((l) => l.slice(3)) : []
+      // Porcelain lines are "XY path" — strip the status token; the helper's
+      // trim() may already have eaten a leading space, so don't count columns.
+      let dirtyFiles = dirtyOut
+        ? dirtyOut
+            .split('\n')
+            .map((l) => l.trim().replace(/^\S+\s+/, ''))
+            .filter(Boolean)
+        : []
       // Lockfile churn is usually our own `npm install` (different npm versions
       // rewrite it) — reset it rather than blocking updates forever; a real
       // update reinstalls right after the pull anyway.
