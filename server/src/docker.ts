@@ -28,15 +28,54 @@ export async function dockerAvailable(): Promise<boolean> {
 }
 
 /**
- * Reads a file from the agent's data dir through the Docker daemon
- * (getArchive → tar). Works when host permissions block a direct read —
- * files the container's internal user owns — and on stopped containers.
- * Returns null if the container or file doesn't exist or docker is down.
+ * Last-resort read: mounts the agent's data dir read-only into a throwaway
+ * container and cats the file — the daemon accesses the host dir as root, so
+ * this works with the agent container stopped or missing and with host dirs
+ * the runtime made unsearchable. ~1–2s; only used when cheaper paths failed.
+ */
+async function readViaEphemeralMount(agent: Agent, relPath: string): Promise<string | null> {
+  let scratch: Docker.Container | null = null
+  try {
+    const docker = getDocker()
+    const bindSrc = resolve(agentDir(agent.id)).replace(/\\/g, '/')
+    scratch = await docker.createContainer({
+      Image: agent.config.image,
+      Entrypoint: ['cat'],
+      Cmd: [`/attache-ro/${relPath}`],
+      HostConfig: { Binds: [`${bindSrc}:/attache-ro:ro`], NetworkMode: 'none' },
+    })
+    await scratch.start()
+    const done = (await scratch.wait()) as { StatusCode?: number }
+    if (done.StatusCode !== 0) return null
+    const raw = (await scratch.logs({ stdout: true, stderr: false, follow: false })) as unknown as Buffer
+    // strip the log stream's 8-byte multiplex frame headers
+    const parts: Buffer[] = []
+    let off = 0
+    while (off + 8 <= raw.length) {
+      const size = raw.readUInt32BE(off + 4)
+      parts.push(raw.subarray(off + 8, off + 8 + size))
+      off += 8 + size
+    }
+    return Buffer.concat(parts).toString('utf8')
+  } catch {
+    return null
+  } finally {
+    if (scratch) void scratch.remove({ force: true }).catch(() => undefined)
+  }
+}
+
+/**
+ * Reads a file from the agent's data dir through the Docker daemon.
+ * Primary: getArchive from the running container (cheap). When the container
+ * is stopped or gone — its bind mount inactive — falls back to an ephemeral
+ * mount of the agent dir. Returns null only when the file really isn't there
+ * (or docker is down).
  */
 export async function readAgentFileViaDocker(agent: Agent, relPath: string): Promise<string | null> {
+  const rel = relPath.replaceAll('\\', '/')
   try {
     const container = getDocker().getContainer(nameFor(agent.id))
-    const inPath = `${agent.config.mountPath.replace(/\/+$/, '')}/${relPath.replaceAll('\\', '/')}`
+    const inPath = `${agent.config.mountPath.replace(/\/+$/, '')}/${rel}`
     const stream = await container.getArchive({ path: inPath })
     const chunks: Buffer[] = []
     await new Promise<void>((res, rej) => {
@@ -64,7 +103,16 @@ export async function readAgentFileViaDocker(agent: Agent, relPath: string): Pro
     }
     return null
   } catch {
-    return null
+    // getArchive failed. If the container is running, that's a genuine 404 —
+    // its mount IS the host dir. Stopped or missing container: the bind mount
+    // is inactive, so read via an ephemeral mount instead.
+    try {
+      const insp = await getDocker().getContainer(nameFor(agent.id)).inspect()
+      if (insp.State?.Running) return null
+    } catch {
+      // no container at all — ephemeral read still works off the host dir
+    }
+    return readViaEphemeralMount(agent, rel)
   }
 }
 
