@@ -24,6 +24,7 @@ export default function AgentDetail() {
   const [docs, setDocs] = useState<AgentDocInfo[]>([])
   const [docText, setDocText] = useState<Record<string, string>>({})
   const [docLoaded, setDocLoaded] = useState<Record<string, boolean>>({})
+  const [docMissing, setDocMissing] = useState<Record<string, boolean>>({})
   const [defs, setDefs] = useState<ContainerDef[]>([])
   const [cronJobs, setCronJobs] = useState<string[]>([])
   const [cronSel, setCronSel] = useState('')
@@ -59,12 +60,14 @@ export default function AgentDetail() {
         setDocs(docsRes.docs)
         setDocLoaded({})
         setDocText({})
+        setDocMissing({})
         if (docsRes.docs[0]) {
           const first = docsRes.docs[0].key
           api.agents
             .doc(id, first)
             .then((res) => {
               setDocText((t) => ({ ...t, [first]: res.content }))
+              setDocMissing((m) => ({ ...m, [first]: !!res.missing }))
               setDocLoaded((l) => ({ ...l, [first]: true }))
             })
             .catch(() => undefined)
@@ -128,6 +131,7 @@ export default function AgentDetail() {
     try {
       const res = await api.agents.doc(id, key)
       setDocText((t) => ({ ...t, [key]: res.content }))
+      setDocMissing((m) => ({ ...m, [key]: !!res.missing }))
       setDocLoaded((l) => ({ ...l, [key]: true }))
     } catch (e) {
       setErr((e as Error).message)
@@ -139,6 +143,7 @@ export default function AgentDetail() {
     setErr('')
     try {
       await api.agents.saveDoc(id, key, docText[key] ?? '')
+      setDocMissing((m) => ({ ...m, [key]: false }))
       flash(`${label} saved`)
     } catch (e) {
       setErr((e as Error).message)
@@ -524,6 +529,14 @@ export default function AgentDetail() {
             {d.hint && <span className="muted"> — {d.hint}</span>}
           </summary>
           <div className="doc-body">
+            {docMissing[d.key] && (
+              <p className="muted" style={{ marginTop: 0 }}>
+                ⚠ File not found on disk (<span className="mono">data/agents/{id}/{d.path}</span>).
+                It appears once the runtime first writes it — but if this agent used to have
+                content here, the data directory may have moved: check the container's mount
+                against the install path. Saving from here creates the file.
+              </p>
+            )}
             <textarea
               rows={i === 0 ? 12 : 8}
               value={docText[d.key] ?? ''}

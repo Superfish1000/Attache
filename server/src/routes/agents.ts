@@ -163,9 +163,9 @@ export default async function agentRoutes(app: FastifyInstance) {
   app.get('/:id/doc/:key', async (req, reply) => {
     const agent = accessibleAgent(req, reply)
     if (!agent) return reply
-    const content = readAgentDoc(agent, (req.params as { key: string }).key)
-    if (content === null) return reply.code(404).send({ error: 'unknown doc' })
-    return { content }
+    const doc = readAgentDoc(agent, (req.params as { key: string }).key)
+    if (doc === null) return reply.code(404).send({ error: 'unknown doc' })
+    return doc
   })
 
   app.put('/:id/doc/:key', async (req, reply) => {
