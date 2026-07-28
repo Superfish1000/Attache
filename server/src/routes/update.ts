@@ -70,10 +70,22 @@ export default async function updateRoutes(app: FastifyInstance) {
   /** git pull --ff-only + npm install. The dev server restarts itself (tsx watch). */
   app.post('/apply', async (req, reply) => {
     try {
-      const dirty = await git('status', '--porcelain')
-      if (dirty) {
+      // Untracked files don't block a pull; git itself errors if one would be overwritten.
+      const dirtyOut = await git('status', '--porcelain', '--untracked-files=no')
+      let dirtyFiles = dirtyOut ? dirtyOut.split('\n').map((l) => l.slice(3)) : []
+      // Lockfile churn is usually our own `npm install` (different npm versions
+      // rewrite it) — reset it rather than blocking updates forever; a real
+      // update reinstalls right after the pull anyway.
+      const lockfiles = dirtyFiles.filter((f) => f.endsWith('package-lock.json'))
+      if (lockfiles.length && lockfiles.length === dirtyFiles.length) {
+        await git('checkout', '--', ...lockfiles)
+        dirtyFiles = []
+      }
+      if (dirtyFiles.length) {
         return reply.code(409).send({
-          error: 'working tree has local changes — commit or stash them before updating',
+          error: `working tree has local changes — commit or stash them before updating: ${dirtyFiles
+            .slice(0, 10)
+            .join(', ')}${dirtyFiles.length > 10 ? ', …' : ''}`,
         })
       }
       const before = await git('rev-parse', '--short', 'HEAD')
