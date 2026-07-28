@@ -78,7 +78,7 @@ export default async function userRoutes(app: FastifyInstance) {
     user.passwordHash = hashPassword(password)
     user.dashboardHash = hermesHashPassword(password)
     save()
-    syncOwnerDashboards(user)
+    await syncOwnerDashboards(user)
     return safeUser(user)
   })
 

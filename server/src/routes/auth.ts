@@ -45,7 +45,7 @@ export default async function authRoutes(app: FastifyInstance) {
       existing.passwordHash = hashPassword(password)
       existing.dashboardHash = hermesHashPassword(password)
       save()
-      syncOwnerDashboards(existing)
+      await syncOwnerDashboards(existing)
       user = existing
     } else {
       user = createUser({
@@ -73,7 +73,7 @@ export default async function authRoutes(app: FastifyInstance) {
     if (!user.dashboardHash) {
       user.dashboardHash = hermesHashPassword(password)
       save()
-      syncOwnerDashboards(user)
+      await syncOwnerDashboards(user)
     }
     const session = createSession(user.id)
     reply.setCookie(SESSION_COOKIE, session.token, cookieOpts(db.settings.security.sessionTtlHours * 3600))

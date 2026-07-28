@@ -1,18 +1,18 @@
 import { db, newId, save } from './store.js'
 import type { Role, User } from './types.js'
-import { deleteAgent, writeDashboardCreds } from './agents.js'
-import { bounceDashboard, removeAgentContainer } from './docker.js'
+import { deleteAgent } from './agents.js'
+import { bounceDashboard, removeAgentContainer, writeDashboardCredsSafe } from './docker.js'
 import { destroyUserSessions, hashPassword, hermesHashPassword } from './auth.js'
 
 /**
  * Re-provisions dashboard logins on every agent the user owns and bounces
- * running dashboards so the change applies immediately. Docker parts are
- * best-effort — call after updating user.dashboardHash.
+ * running dashboards so the change applies immediately. Best-effort — a
+ * container-owned .env is written through docker; failures never block the
+ * password change itself. Call after updating user.dashboardHash.
  */
-export function syncOwnerDashboards(user: User): void {
+export async function syncOwnerDashboards(user: User): Promise<void> {
   for (const agent of db.agents.filter((a) => a.userId === user.id)) {
-    writeDashboardCreds(agent, user)
-    void bounceDashboard(agent.id)
+    if (await writeDashboardCredsSafe(agent, user)) void bounceDashboard(agent.id)
   }
 }
 

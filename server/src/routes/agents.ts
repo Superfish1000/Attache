@@ -19,6 +19,7 @@ import {
   dockerAvailable,
   provisionMcpServers,
   readAgentFileViaDocker,
+  writeAgentFileViaDocker,
   removeAgentContainer,
   startAgentContainer,
   startMcpLogin,
@@ -181,8 +182,21 @@ export default async function agentRoutes(app: FastifyInstance) {
     if (!agent) return reply
     const { content } = (req.body ?? {}) as { content?: string }
     if (typeof content !== 'string') return reply.code(400).send({ error: 'content (string) required' })
-    if (!writeAgentDoc(agent, (req.params as { key: string }).key, content)) {
-      return reply.code(404).send({ error: 'unknown doc' })
+    const docKey = (req.params as { key: string }).key
+    const fileDef = agentFileDefs(agent).find((f) => f.key === docKey)
+    if (!fileDef) return reply.code(404).send({ error: 'unknown doc' })
+    try {
+      if (!writeAgentDoc(agent, docKey, content)) {
+        return reply.code(404).send({ error: 'unknown doc' })
+      }
+    } catch {
+      // host write blocked (container-owned file) — write through the daemon
+      if (!(await writeAgentFileViaDocker(agent, fileDef.path, content))) {
+        return reply.code(500).send({
+          error:
+            'file not writable: host permissions block it and the container write failed — is the container running?',
+        })
+      }
     }
     return { ok: true }
   })

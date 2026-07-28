@@ -548,9 +548,9 @@ export default function AgentDetail() {
             )}
             {docNote[d.key] === 'via' && (
               <p className="muted" style={{ marginTop: 0 }}>
-                ℹ Read through the container — the file is owned by the container's internal
-                user, so the host account running Attaché can't open it directly. Viewing works;
-                editing needs host access:{' '}
+                ℹ Accessed through the container — the file is owned by the container's internal
+                user, so the host account running Attaché can't open it directly. Viewing and
+                saving both work while the container runs. For shell access on the host:{' '}
                 <span className="mono">
                   sudo setfacl -R -m u:$USER:rwX -m d:u:$USER:rwX data/agents
                 </span>

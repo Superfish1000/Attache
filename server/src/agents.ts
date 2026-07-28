@@ -116,15 +116,21 @@ export function syncAgentPorts(agent: Agent): boolean {
   return true
 }
 
-/** Upserts KEY=VALUE lines into the agent's data-dir .env, preserving others. */
-export function upsertAgentEnv(agentId: string, entries: Record<string, string>): void {
-  const envPath = join(agentDir(agentId), '.env')
-  const lines = existsSync(envPath) ? readFileSync(envPath, 'utf8').split(/\r?\n/) : []
+/** Upserts KEY=VALUE lines into env-file text, preserving unrelated lines. */
+export function mergeEnvLines(existing: string, entries: Record<string, string>): string {
+  const lines = existing.split(/\r?\n/)
   const keys = new Set(Object.keys(entries))
   const keep = lines.filter((l) => l.trim() !== '' && !keys.has(l.split('=')[0]))
   for (const [k, v] of Object.entries(entries)) keep.push(`${k}=${v}`)
+  return keep.join('\n') + '\n'
+}
+
+/** Upserts KEY=VALUE lines into the agent's data-dir .env, preserving others. */
+export function upsertAgentEnv(agentId: string, entries: Record<string, string>): void {
+  const envPath = join(agentDir(agentId), '.env')
+  const existing = existsSync(envPath) ? readFileSync(envPath, 'utf8') : ''
   mkdirSync(agentDir(agentId), { recursive: true })
-  writeFileSync(envPath, keep.join('\n') + '\n')
+  writeFileSync(envPath, mergeEnvLines(existing, entries))
 }
 
 /**
@@ -134,10 +140,9 @@ export function upsertAgentEnv(agentId: string, entries: Record<string, string>)
  * is generated once and preserved so dashboard sessions survive restarts.
  * Other `.env` lines are left untouched.
  */
-export function writeDashboardCreds(agent: Agent, owner: User): void {
-  if (!owner.dashboardHash) return
-  const envPath = join(agentDir(agent.id), '.env')
-  const lines = existsSync(envPath) ? readFileSync(envPath, 'utf8').split(/\r?\n/) : []
+export function mergeDashboardEnv(existing: string, owner: User): string | null {
+  if (!owner.dashboardHash) return null
+  const lines = existing.split(/\r?\n/)
   const keep = lines.filter(
     (l) => l.trim() !== '' && !l.startsWith('HERMES_DASHBOARD_BASIC_AUTH_'),
   )
@@ -151,8 +156,16 @@ export function writeDashboardCreds(agent: Agent, owner: User): void {
     `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=${owner.dashboardHash}`,
     `HERMES_DASHBOARD_BASIC_AUTH_SECRET=${existingSecret || randomBytes(32).toString('hex')}`,
   )
+  return keep.join('\n') + '\n'
+}
+
+export function writeDashboardCreds(agent: Agent, owner: User): void {
+  const envPath = join(agentDir(agent.id), '.env')
+  const existing = existsSync(envPath) ? readFileSync(envPath, 'utf8') : ''
+  const merged = mergeDashboardEnv(existing, owner)
+  if (merged === null) return
   mkdirSync(agentDir(agent.id), { recursive: true })
-  writeFileSync(envPath, keep.join('\n') + '\n')
+  writeFileSync(envPath, merged)
 }
 
 /** Behavior files this agent exposes, from its container definition. */

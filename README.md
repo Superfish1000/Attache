@@ -182,7 +182,7 @@ Creates the account as an admin, or — if the email already exists — promotes
 | GUI dev server won't bind | Windows excluded-port ranges — `netsh interface ipv4 show excludedportrange protocol=tcp`, then change ports in `.claude/launch.json` / vite config. |
 | Slow replies despite warm gateway | The model does the thinking — switch the agent's model (e.g. `hermes config set model.default anthropic/claude-sonnet-5` inside the container) for faster turnaround. |
 | Update blocked: "working tree has local changes" | The error names the files. `git stash` (or `git checkout -- <files>`) in the install dir, then retry. Lockfile-only churn from `npm install` is reset automatically. |
-| Agent files unreadable on a Linux host ("permission denied" / read-through-container notes) | The container's internal user (e.g. UID 10000) owns files it writes into `data/agents/`. Viewing falls back to reading through Docker automatically; for editing, grant the Attaché account access: `sudo setfacl -R -m u:$USER:rwX -m d:u:$USER:rwX data/agents` (the `d:` default keeps future container-created files accessible). |
+| Agent files unreadable on a Linux host ("permission denied" / accessed-through-container notes) | The runtime chowns its data dir to its internal user (e.g. UID 10000) at container start. Attaché transparently reads **and writes** those files through Docker while the container runs — file editors, password→dashboard sync, and MCP token writes all keep working. Only shell access, stopped-container edits, and *reset files* during regenerate need host access: `sudo setfacl -R -m u:$USER:rwX -m d:u:$USER:rwX data/agents` (the `d:` default survives new files; re-run if the container resets modes). |
 
 ## Security notes
 

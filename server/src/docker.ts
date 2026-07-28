@@ -2,8 +2,14 @@ import Docker from 'dockerode'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { Writable } from 'node:stream'
-import type { Agent } from './types.js'
-import { agentDir, upsertAgentEnv } from './agents.js'
+import type { Agent, User } from './types.js'
+import {
+  agentDir,
+  mergeDashboardEnv,
+  mergeEnvLines,
+  upsertAgentEnv,
+  writeDashboardCreds,
+} from './agents.js'
 import { db } from './store.js'
 
 /** Fresh handle per call so a settings change takes effect without a restart. Construction is cheap. */
@@ -60,6 +66,117 @@ export async function readAgentFileViaDocker(agent: Agent, relPath: string): Pro
   } catch {
     return null
   }
+}
+
+/** uid/gid/mode from the first tar header getArchive returns for a path. */
+async function statViaArchive(
+  agent: Agent,
+  inPath: string,
+): Promise<{ uid: number; gid: number; mode: number } | null> {
+  try {
+    const stream = await getDocker().getContainer(nameFor(agent.id)).getArchive({ path: inPath })
+    const chunks: Buffer[] = []
+    await new Promise<void>((res, rej) => {
+      stream.on('data', (c: Buffer) => chunks.push(c))
+      stream.on('end', res)
+      stream.on('error', rej)
+    })
+    const tar = Buffer.concat(chunks)
+    if (tar.length < 512) return null
+    const oct = (off: number, len: number) =>
+      parseInt(tar.subarray(off, off + len).toString('ascii').replace(/\0/g, ' ').trim() || '0', 8)
+    return { mode: oct(100, 8), uid: oct(108, 8), gid: oct(116, 8) }
+  } catch {
+    return null
+  }
+}
+
+/** Single-file ustar archive with explicit ownership. */
+function tarFor(name: string, content: Buffer, uid: number, gid: number, mode: number): Buffer {
+  const h = Buffer.alloc(512)
+  h.write(name, 0, 100, 'utf8')
+  h.write((mode & 0o7777).toString(8).padStart(7, '0'), 100)
+  h.write(uid.toString(8).padStart(7, '0'), 108)
+  h.write(gid.toString(8).padStart(7, '0'), 116)
+  h.write(content.length.toString(8).padStart(11, '0'), 124)
+  h.write(Math.floor(Date.now() / 1000).toString(8).padStart(11, '0'), 136)
+  h.fill(0x20, 148, 156) // checksum computed over spaces
+  h[156] = 0x30 // '0' = regular file
+  h.write('ustar', 257)
+  h.write('00', 263)
+  let sum = 0
+  for (const b of h) sum += b
+  h.write(sum.toString(8).padStart(6, '0') + '\0 ', 148)
+  const pad = Buffer.alloc((512 - (content.length % 512)) % 512)
+  return Buffer.concat([h, content, pad, Buffer.alloc(1024)])
+}
+
+/**
+ * Writes a file into the agent's data dir through the Docker daemon
+ * (putArchive) — for hosts where the container's internal user owns the
+ * tree and blocks direct writes. Ownership is copied from the existing file
+ * (or the data dir itself) so the runtime keeps write access to its own
+ * files. Requires a running container: on a stopped one the bind mount
+ * isn't active and the write would land in the container layer, shadowed
+ * at next start. Returns false on any failure.
+ */
+export async function writeAgentFileViaDocker(
+  agent: Agent,
+  relPath: string,
+  content: string,
+): Promise<boolean> {
+  try {
+    const container = getDocker().getContainer(nameFor(agent.id))
+    const insp = await container.inspect()
+    if (!insp.State?.Running) return false
+    const mount = agent.config.mountPath.replace(/\/+$/, '')
+    const rel = relPath.replaceAll('\\', '/')
+    let mode = 0o644
+    let stat = await statViaArchive(agent, `${mount}/${rel}`)
+    if (stat) mode = stat.mode & 0o7777 || 0o644
+    else stat = await statViaArchive(agent, mount)
+    if (!stat) return false
+    await container.putArchive(tarFor(rel, Buffer.from(content, 'utf8'), stat.uid, stat.gid, mode), {
+      path: mount,
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Host-first .env upsert; falls back to writing through the container. */
+export async function upsertAgentEnvSafe(agent: Agent, entries: Record<string, string>): Promise<void> {
+  try {
+    upsertAgentEnv(agent.id, entries)
+    return
+  } catch {
+    // EACCES — container-owned tree; go through the daemon instead
+  }
+  const existing = await readAgentFileViaDocker(agent, '.env')
+  if (existing === null) throw new Error('agent .env unreadable on host and via container')
+  if (!(await writeAgentFileViaDocker(agent, '.env', mergeEnvLines(existing, entries)))) {
+    throw new Error('agent .env not writable on host or via container')
+  }
+}
+
+/**
+ * Host-first dashboard-cred sync; falls back through the container.
+ * Best-effort like the password-sync path it serves — returns false instead
+ * of throwing when neither route works (creds apply on next opportunity).
+ */
+export async function writeDashboardCredsSafe(agent: Agent, owner: User): Promise<boolean> {
+  try {
+    writeDashboardCreds(agent, owner)
+    return true
+  } catch {
+    // EACCES — container-owned tree
+  }
+  const existing = await readAgentFileViaDocker(agent, '.env')
+  if (existing === null) return false
+  const merged = mergeDashboardEnv(existing, owner)
+  if (merged === null) return true
+  return writeAgentFileViaDocker(agent, '.env', merged)
 }
 
 const nameFor = (agentId: string) => `attache-agent-${agentId}`
@@ -209,17 +326,22 @@ export async function startMcpLogin(
     .getContainer(nameFor(agent.id))
     .exec({ Cmd: ['sh', '-c', `nohup sh -c '${rendered.replaceAll("'", "'\\''")}' >/dev/null 2>&1 &`], AttachStdout: false, AttachStderr: false })
   await exec.start({ Detach: true })
-  // tail the host-side log for the device code (login itself runs for minutes)
+  // tail the log for the device code (login itself runs for minutes); host
+  // read first, falling back through docker when the container owns the file
+  const readLog = async (): Promise<string | null> => {
+    try {
+      if (existsSync(logOnHost)) return readFileSync(logOnHost, 'utf8')
+    } catch {
+      // EACCES — container-owned; fall through
+    }
+    return readAgentFileViaDocker(agent, logName)
+  }
   for (let tick = 0; tick < 20; tick++) {
     await new Promise((res) => setTimeout(res, 1000))
-    if (existsSync(logOnHost)) {
-      const text = readFileSync(logOnHost, 'utf8').trim()
-      if (text.length > 40) return text.slice(0, 1500)
-    }
+    const text = (await readLog())?.trim() ?? ''
+    if (text.length > 40) return text.slice(0, 1500)
   }
-  return existsSync(logOnHost)
-    ? readFileSync(logOnHost, 'utf8').slice(0, 1500) || 'sign-in started — output pending, retry in a moment'
-    : 'sign-in started — no output yet, retry in a moment'
+  return (await readLog())?.slice(0, 1500) || 'sign-in started — no output yet, retry in a moment'
 }
 
 export interface McpProvisionResult {
@@ -246,7 +368,12 @@ export async function provisionMcpServers(agent: Agent): Promise<McpProvisionRes
     if (server.authToken && def.mcpTokenEnvKey.trim()) {
       const nameUpper = server.name.toUpperCase().replace(/[^A-Z0-9_]/g, '_').replace(/^_+|_+$/g, '')
       const envKey = def.mcpTokenEnvKey.replaceAll('{{NAME_UPPER}}', nameUpper)
-      upsertAgentEnv(agent.id, { [envKey]: server.authToken })
+      try {
+        await upsertAgentEnvSafe(agent, { [envKey]: server.authToken })
+      } catch (err) {
+        results.push({ name: server.name, ok: false, output: `token write failed: ${(err as Error).message}` })
+        continue
+      }
     }
     const fill = (tpl: string) =>
       tpl
