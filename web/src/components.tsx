@@ -255,6 +255,47 @@ export function EnvVarsHelp() {
       <p className="muted">
         Layering: universal default env → container definition env → per-agent env (agent wins).
       </p>
+      <p>
+        <b>Connecting to a custom model server</b> (vLLM, Ollama, LM Studio, llama.cpp, or any
+        OpenAI-compatible gateway): set the <span className="mono">model:</span> section in the
+        agent's <b>Runtime config</b> file (Files section on the agent page):
+      </p>
+      <pre>{`model:
+  default: "meta-llama/Llama-3.1-70B-Instruct"  # exact id the server reports at <base_url>/models
+  provider: custom            # NOT "openai" — aliases: ollama / vllm / llamacpp; LM Studio: lmstudio
+  base_url: "http://192.168.1.50:8000/v1"       # include /v1; host.docker.internal = the Docker host
+  api_key: "\${MY_LLM_KEY}"                      # omit the whole line for no-auth servers`}</pre>
+      <table>
+        <thead>
+          <tr>
+            <th>Variable</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="mono">MY_LLM_KEY (any name you choose)</td>
+            <td>
+              Key for the custom endpoint — add to the agent's env, Regenerate, reference from
+              config as <span className="mono">{'${MY_LLM_KEY}'}</span>. There is no fixed built-in
+              variable for custom servers.
+            </td>
+          </tr>
+          <tr>
+            <td className="mono">CUSTOM_BASE_URL</td>
+            <td>Env-only endpoint override — beats config base_url without editing files</td>
+          </tr>
+          <tr>
+            <td className="mono">HERMES_MODEL</td>
+            <td>Model override for the warm gateway (what the Chat tab talks to) and cron jobs</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="muted">
+        OPENAI_API_KEY is host-gated to api.openai.com and never sent to custom hosts. Config edits
+        apply on container Stop/Start; env changes need Regenerate. Full guide with the named
+        provider + fallback forms is in the README.
+      </p>
     </div>
   )
 }

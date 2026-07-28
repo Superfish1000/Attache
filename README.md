@@ -84,6 +84,61 @@ Each agent owns a data dir (`data/agents/<id>/`) mounted into its container — 
 
 Host ports are auto-assigned per agent from a configurable range (default 18000+). Definition-declared ports missing from an agent are added automatically at every start/regenerate.
 
+### Connecting Hermes to a custom model server
+
+Hermes can talk to any OpenAI-compatible endpoint — vLLM, Ollama, LM Studio, llama.cpp, or a company gateway — instead of a hosted provider. It's all configured in the agent's **Runtime config** file (`config.yaml`, editable in the Files section of the agent page):
+
+```yaml
+model:
+  default: "meta-llama/Llama-3.1-70B-Instruct"  # exact id the server reports at GET <base_url>/models
+  provider: custom                              # aliases: ollama / vllm / llamacpp; LM Studio: lmstudio
+  base_url: "http://192.168.1.50:8000/v1"       # include /v1
+  api_key: "${MY_LLM_KEY}"                      # omit the whole line for no-auth servers
+```
+
+Or the named-provider form (reusable, and valid as a fallback target):
+
+```yaml
+model:
+  default: "meta-llama/Llama-3.1-70B-Instruct"
+  provider: my-gateway                 # or "custom:my-gateway"
+providers:
+  my-gateway:
+    base_url: "https://llm.internal.example.com/v1"
+    key_env: MY_GATEWAY_API_KEY        # NAME of the env var holding the key
+    # extra_headers: { X-Corp-Auth: "${CORP_TOKEN}" }
+    # ssl_verify: false                # or ssl_ca_cert: /path/ca.pem
+```
+
+Automatic failover when the primary errors (429 / 503 / 529 / connection failure):
+
+```yaml
+fallback_model:
+  provider: custom
+  model: "llama-3.3-70b"
+  base_url: "http://127.0.0.1:11434/v1"
+  key_env: OLLAMA_LOCAL_KEY            # optional; inline api_key also accepted
+```
+
+**The API key lives in an env var you name yourself.** Add it to the agent's env (Configuration → env), press **Regenerate** so the container is recreated with it, and reference it from config as `${MY_LLM_KEY}` or via `key_env`. There is no fixed built-in variable for custom endpoints — `OPENAI_API_KEY` is deliberately host-gated to `api.openai.com` and is **never sent** to other hosts.
+
+| Variable | Purpose |
+| --- | --- |
+| *(your own name, e.g. `MY_LLM_KEY`)* | Key for the custom endpoint — referenced from config via `${…}` or `key_env` |
+| `CUSTOM_BASE_URL` | Env-only endpoint override — beats `model.base_url` without editing config |
+| `HERMES_MODEL` | Model override for the warm gateway (what the Chat tab talks to) and cron jobs |
+| `OPENAI_API_KEY` | Only for `api.openai.com` (`provider: openai-api`) — not sent to custom hosts |
+| `OPENAI_BASE_URL` | Only honored for `provider: openai-api` — **not** a custom-endpoint override |
+
+Gotchas:
+
+- `provider: openai` is **invalid** and errors at runtime — use `custom` (or `openai-api` for actual OpenAI).
+- With a non-loopback `base_url` there is **no model auto-detect** — always set `model.default` to the exact id the server serves.
+- A no-auth local server needs no key at all: omit `api_key` and Hermes sends a placeholder.
+- From inside the container, LAN IPs are reachable directly; for a server running on the Docker host itself use `host.docker.internal`.
+- `api_mode` defaults to `chat_completions`; set `anthropic_messages` for Anthropic-protocol endpoints.
+- Config is read at process start: after editing Runtime config, **Stop/Start** the container; after env changes, **Regenerate**.
+
 ### Chat
 
 Pick an agent and talk. Messages stream through the agent's OpenAI-compatible gateway — a warm, always-loaded process, so replies take seconds, not minutes. History is kept per agent in your browser. **Timing note:** after a container starts, the gateway needs ~2–4 minutes to come up; a "gateway unreachable" error right after boot just means wait.

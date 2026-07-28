@@ -45,6 +45,7 @@ const HERMES_FILES = [
   { key: 'agents', label: 'Agents', path: 'AGENTS.md', hint: 'multi-agent coordination notes', template: '' },
   { key: 'tools', label: 'Tools', path: 'TOOLS.md', hint: 'custom tool documentation', template: '' },
   { key: 'hermes', label: 'Context', path: '.hermes.md', hint: 'project context — auto-loaded when present', template: '' },
+  { key: 'config', label: 'Runtime config', path: 'config.yaml', hint: 'hermes runtime settings — model / custom server under "model:" (seeded by hermes on first boot)', template: '' },
 ]
 
 /**

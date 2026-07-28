@@ -508,6 +508,15 @@ textarea:disabled {
   padding-left: 20px;
 }
 
+.env-help pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  overflow-x: auto;
+}
+
 /* chat */
 .chat-panel {
   display: flex;
