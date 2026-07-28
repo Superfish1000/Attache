@@ -5,9 +5,6 @@ import {
   containerDefFor,
   createAgent,
   deleteAgent,
-  getCronJob,
-  listCronJobs,
-  putCronJob,
   readAgentDoc,
   resetAgentFiles,
   syncAgentPorts,
@@ -17,9 +14,12 @@ import {
   containerInfo,
   containerLogs,
   dockerAvailable,
+  listAgentCron,
   provisionMcpServers,
+  readAgentCron,
   readAgentFileViaDocker,
   readMcpLoginLog,
+  writeAgentCron,
   writeAgentFileViaDocker,
   removeAgentContainer,
   startAgentContainer,
@@ -204,18 +204,19 @@ export default async function agentRoutes(app: FastifyInstance) {
     return { ok: true }
   })
 
-  // hermes cron jobs — one file per job under cron/
+  // hermes cron jobs — one file per job under cron/ (docker fallback for
+  // container-owned dirs, same as the behavior-file editors)
   app.get('/:id/cron', async (req, reply) => {
     const agent = accessibleAgent(req, reply)
     if (!agent) return reply
-    return { jobs: listCronJobs(agent.id) }
+    return { jobs: await listAgentCron(agent) }
   })
 
   app.get('/:id/cron/:file', async (req, reply) => {
     const agent = accessibleAgent(req, reply)
     if (!agent) return reply
     try {
-      return { content: getCronJob(agent.id, (req.params as { file: string }).file) }
+      return { content: await readAgentCron(agent, (req.params as { file: string }).file) }
     } catch (err) {
       return reply.code(400).send({ error: (err as Error).message })
     }
@@ -227,7 +228,7 @@ export default async function agentRoutes(app: FastifyInstance) {
     const { content } = (req.body ?? {}) as { content?: string }
     if (typeof content !== 'string') return reply.code(400).send({ error: 'content (string) required' })
     try {
-      putCronJob(agent.id, (req.params as { file: string }).file, content)
+      await writeAgentCron(agent, (req.params as { file: string }).file, content)
       return { ok: true }
     } catch (err) {
       return reply.code(400).send({ error: (err as Error).message })

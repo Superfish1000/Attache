@@ -164,6 +164,8 @@ export interface UpdateCheck {
   status: 'up-to-date' | 'behind' | 'ahead' | 'diverged' | 'unknown'
   behindBy: number
   latest: { short: string; message: string; date: string } | null
+  runningShort?: string
+  restartNeeded?: boolean
 }
 
 export interface UpdateResult {

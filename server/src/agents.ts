@@ -203,7 +203,7 @@ export function writeAgentDoc(agent: Agent, key: string, content: string): boole
 }
 
 /** Hermes cron job definitions — one YAML/JSON file per job under cron/. */
-const CRON_FILE_RE = /^[\w][\w.-]*$/
+export const CRON_FILE_RE = /^[\w][\w.-]*$/
 
 function cronPath(id: string, file: string): string {
   if (!CRON_FILE_RE.test(file)) throw new Error('invalid cron file name')

@@ -4,9 +4,13 @@ import { join, resolve } from 'node:path'
 import { Writable } from 'node:stream'
 import type { Agent, User } from './types.js'
 import {
+  CRON_FILE_RE,
   agentDir,
+  getCronJob,
+  listCronJobs,
   mergeDashboardEnv,
   mergeEnvLines,
+  putCronJob,
   upsertAgentEnv,
   writeDashboardCreds,
 } from './agents.js'
@@ -33,15 +37,19 @@ export async function dockerAvailable(): Promise<boolean> {
  * this works with the agent container stopped or missing and with host dirs
  * the runtime made unsearchable. ~1–2s; only used when cheaper paths failed.
  */
-async function readViaEphemeralMount(agent: Agent, relPath: string): Promise<string | null> {
+async function runEphemeralMount(
+  agent: Agent,
+  entrypoint: string[],
+  cmd: string[],
+): Promise<string | null> {
   let scratch: Docker.Container | null = null
   try {
     const docker = getDocker()
     const bindSrc = resolve(agentDir(agent.id)).replace(/\\/g, '/')
     scratch = await docker.createContainer({
       Image: agent.config.image,
-      Entrypoint: ['cat'],
-      Cmd: [`/attache-ro/${relPath}`],
+      Entrypoint: entrypoint,
+      Cmd: cmd,
       HostConfig: { Binds: [`${bindSrc}:/attache-ro:ro`], NetworkMode: 'none' },
     })
     await scratch.start()
@@ -63,6 +71,9 @@ async function readViaEphemeralMount(agent: Agent, relPath: string): Promise<str
     if (scratch) void scratch.remove({ force: true }).catch(() => undefined)
   }
 }
+
+const readViaEphemeralMount = (agent: Agent, relPath: string) =>
+  runEphemeralMount(agent, ['cat'], [`/attache-ro/${relPath}`])
 
 /**
  * Reads a file from the agent's data dir through the Docker daemon.
@@ -210,7 +221,9 @@ export function scheduleMountGroupFix(agent: Agent): void {
   const gid = process.getgid()
   const mount = agent.config.mountPath.replace(/\/+$/, '')
   const cmd = `chown -R :${gid} "${mount}" && chmod -R g+rwX "${mount}" && find "${mount}" -type d -exec chmod g+s {} +`
-  for (const delayMs of [20_000, 120_000]) {
+  // hermes' own chown can land minutes into its (90s–4min) init — keep
+  // re-applying well past that window
+  for (const delayMs of [20_000, 120_000, 300_000, 600_000]) {
     setTimeout(async () => {
       try {
         const exec = await getDocker()
@@ -422,6 +435,87 @@ export async function startMcpLogin(
     if (text.length > 40) return text.slice(0, 1500)
   }
   return (await readLog())?.slice(0, 1500) || 'sign-in started — no output yet, retry in a moment'
+}
+
+/**
+ * Lists regular files directly under a dir of the agent's data dir through
+ * docker: getArchive of the dir from the running container, ephemeral
+ * `ls -1` mount otherwise. null = dir unreachable/absent.
+ */
+async function listAgentDirViaDocker(agent: Agent, relDir: string): Promise<string[] | null> {
+  try {
+    const container = getDocker().getContainer(nameFor(agent.id))
+    const inPath = `${agent.config.mountPath.replace(/\/+$/, '')}/${relDir}`
+    const stream = await container.getArchive({ path: inPath })
+    const chunks: Buffer[] = []
+    await new Promise<void>((res, rej) => {
+      stream.on('data', (c: Buffer) => chunks.push(c))
+      stream.on('end', res)
+      stream.on('error', rej)
+    })
+    const tar = Buffer.concat(chunks)
+    const names: string[] = []
+    let off = 0
+    while (off + 512 <= tar.length) {
+      const name = tar.subarray(off, off + 100).toString('utf8').replace(/\0[^]*$/, '')
+      if (!name) break
+      const size = parseInt(tar.subarray(off + 124, off + 136).toString('ascii').trim() || '0', 8)
+      const type = tar[off + 156]
+      // top-level regular files only: "<dir>/<file>" with no deeper slashes
+      const parts = name.split('/').filter(Boolean)
+      if ((type === 0x30 || type === 0) && parts.length === 2) names.push(parts[1])
+      off += 512 + Math.ceil(size / 512) * 512
+    }
+    return names.sort()
+  } catch {
+    try {
+      const insp = await getDocker().getContainer(nameFor(agent.id)).inspect()
+      if (insp.State?.Running) return null
+    } catch {
+      // no container — ephemeral still works
+    }
+    const out = await runEphemeralMount(agent, ['ls', '-1'], [`/attache-ro/${relDir}`])
+    return out === null ? null : out.split('\n').map((l) => l.trim()).filter(Boolean).sort()
+  }
+}
+
+/** Cron listing that survives container-owned dirs: host-first, docker fallback. */
+export async function listAgentCron(agent: Agent): Promise<string[]> {
+  let host: string[] | null = null
+  try {
+    host = listCronJobs(agent.id)
+  } catch {
+    // EACCES — container-owned dir
+  }
+  if (host && host.length) return host
+  // empty could mean "unsearchable parent" rather than "no jobs" — verify
+  return (await listAgentDirViaDocker(agent, 'cron')) ?? host ?? []
+}
+
+/** Cron read that survives container-owned dirs. */
+export async function readAgentCron(agent: Agent, file: string): Promise<string> {
+  if (!CRON_FILE_RE.test(file)) throw new Error('invalid cron file name')
+  try {
+    const content = getCronJob(agent.id, file)
+    if (content) return content
+  } catch {
+    // EACCES — fall through
+  }
+  return (await readAgentFileViaDocker(agent, `cron/${file}`)) ?? ''
+}
+
+/** Cron write that survives container-owned dirs. */
+export async function writeAgentCron(agent: Agent, file: string, content: string): Promise<void> {
+  if (!CRON_FILE_RE.test(file)) throw new Error('invalid cron file name')
+  try {
+    putCronJob(agent.id, file, content)
+    return
+  } catch {
+    // EACCES — fall through
+  }
+  if (!(await writeAgentFileViaDocker(agent, `cron/${file}`, content))) {
+    throw new Error('cron file not writable on host or via container — is the container running?')
+  }
 }
 
 /**

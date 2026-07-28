@@ -12,6 +12,11 @@ async function git(...args: string[]): Promise<string> {
   return stdout.trim()
 }
 
+// The commit this PROCESS booted from. The checkout can move (git pull) while
+// the process keeps running old code — comparing the two exposes exactly the
+// "updated but not restarted" state that otherwise looks like random bugs.
+const RUNNING_COMMIT = await git('rev-parse', '--short', 'HEAD').catch(() => '')
+
 /** "https://github.com/owner/repo.git" | "git@github.com:owner/repo.git" -> "owner/repo" */
 function parseGithubRepo(url: string): string | null {
   const m = url.match(/github\.com[:/]+([^/]+\/[^/\s]+?)(?:\.git)?$/)
@@ -58,7 +63,15 @@ export default async function updateRoutes(app: FastifyInstance) {
               date: await git('log', '-1', '--format=%cI', 'origin/main'),
             }
           : null
-      return { repo, currentShort, status, behindBy, latest }
+      return {
+        repo,
+        currentShort,
+        status,
+        behindBy,
+        latest,
+        runningShort: RUNNING_COMMIT,
+        restartNeeded: Boolean(RUNNING_COMMIT) && RUNNING_COMMIT !== currentShort,
+      }
     } catch (err) {
       const e = err as Error & { stderr?: string }
       return reply.code(502).send({

@@ -139,6 +139,14 @@ export default function Settings() {
                 {fmtDate(upd.latest.date)})
               </p>
             )}
+            {upd.restartNeeded && (
+              <p>
+                <Chip tone="err">restart needed</Chip> The server process is still running{' '}
+                <span className="mono">{upd.runningShort}</span> but the checkout is at{' '}
+                <span className="mono">{upd.currentShort}</span> — restart Attaché to actually run
+                the updated code. Until then, new features 404 and old bugs persist.
+              </p>
+            )}
           </>
         ) : (
           <p className="muted" style={{ marginTop: 0 }}>
