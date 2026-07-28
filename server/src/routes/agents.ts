@@ -18,6 +18,7 @@ import {
   containerLogs,
   dockerAvailable,
   provisionMcpServers,
+  readAgentFileViaDocker,
   removeAgentContainer,
   startAgentContainer,
   startMcpLogin,
@@ -163,8 +164,15 @@ export default async function agentRoutes(app: FastifyInstance) {
   app.get('/:id/doc/:key', async (req, reply) => {
     const agent = accessibleAgent(req, reply)
     if (!agent) return reply
-    const doc = readAgentDoc(agent, (req.params as { key: string }).key)
+    const key = (req.params as { key: string }).key
+    const doc = readAgentDoc(agent, key)
     if (doc === null) return reply.code(404).send({ error: 'unknown doc' })
+    if (doc.unreadable) {
+      // Host permissions block us (container-user-owned file) — read through docker instead.
+      const path = agentFileDefs(agent).find((f) => f.key === key)?.path
+      const via = path ? await readAgentFileViaDocker(agent, path) : null
+      if (via !== null) return { content: via, missing: false, viaContainer: true }
+    }
     return doc
   })
 

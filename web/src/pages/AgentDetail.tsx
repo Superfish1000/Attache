@@ -2,6 +2,15 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { Chip, EnvVarsHelp, ErrorBanner, InfoPopup, fmtDate, normalizeImageRef } from '../components'
+
+const noteOf = (res: { missing?: boolean; unreadable?: boolean; viaContainer?: boolean }) =>
+  res.missing
+    ? ('missing' as const)
+    : res.unreadable
+      ? ('unreadable' as const)
+      : res.viaContainer
+        ? ('via' as const)
+        : undefined
 import { useAuth } from '../auth'
 import type { Agent, AgentDocInfo, ContainerDef, ContainerState, McpInfo, User } from '../types'
 
@@ -24,7 +33,7 @@ export default function AgentDetail() {
   const [docs, setDocs] = useState<AgentDocInfo[]>([])
   const [docText, setDocText] = useState<Record<string, string>>({})
   const [docLoaded, setDocLoaded] = useState<Record<string, boolean>>({})
-  const [docMissing, setDocMissing] = useState<Record<string, boolean>>({})
+  const [docNote, setDocNote] = useState<Record<string, 'missing' | 'unreadable' | 'via' | undefined>>({})
   const [defs, setDefs] = useState<ContainerDef[]>([])
   const [cronJobs, setCronJobs] = useState<string[]>([])
   const [cronSel, setCronSel] = useState('')
@@ -60,14 +69,14 @@ export default function AgentDetail() {
         setDocs(docsRes.docs)
         setDocLoaded({})
         setDocText({})
-        setDocMissing({})
+        setDocNote({})
         if (docsRes.docs[0]) {
           const first = docsRes.docs[0].key
           api.agents
             .doc(id, first)
             .then((res) => {
               setDocText((t) => ({ ...t, [first]: res.content }))
-              setDocMissing((m) => ({ ...m, [first]: !!res.missing }))
+              setDocNote((m) => ({ ...m, [first]: noteOf(res) }))
               setDocLoaded((l) => ({ ...l, [first]: true }))
             })
             .catch(() => undefined)
@@ -131,7 +140,7 @@ export default function AgentDetail() {
     try {
       const res = await api.agents.doc(id, key)
       setDocText((t) => ({ ...t, [key]: res.content }))
-      setDocMissing((m) => ({ ...m, [key]: !!res.missing }))
+      setDocNote((m) => ({ ...m, [key]: noteOf(res) }))
       setDocLoaded((l) => ({ ...l, [key]: true }))
     } catch (e) {
       setErr((e as Error).message)
@@ -143,7 +152,7 @@ export default function AgentDetail() {
     setErr('')
     try {
       await api.agents.saveDoc(id, key, docText[key] ?? '')
-      setDocMissing((m) => ({ ...m, [key]: false }))
+      setDocNote((m) => ({ ...m, [key]: undefined }))
       flash(`${label} saved`)
     } catch (e) {
       setErr((e as Error).message)
@@ -529,12 +538,32 @@ export default function AgentDetail() {
             {d.hint && <span className="muted"> — {d.hint}</span>}
           </summary>
           <div className="doc-body">
-            {docMissing[d.key] && (
+            {docNote[d.key] === 'missing' && (
               <p className="muted" style={{ marginTop: 0 }}>
                 ⚠ File not found on disk (<span className="mono">data/agents/{id}/{d.path}</span>).
                 It appears once the runtime first writes it — but if this agent used to have
                 content here, the data directory may have moved: check the container's mount
                 against the install path. Saving from here creates the file.
+              </p>
+            )}
+            {docNote[d.key] === 'via' && (
+              <p className="muted" style={{ marginTop: 0 }}>
+                ℹ Read through the container — the file is owned by the container's internal
+                user, so the host account running Attaché can't open it directly. Viewing works;
+                editing needs host access:{' '}
+                <span className="mono">
+                  sudo setfacl -R -m u:$USER:rwX -m d:u:$USER:rwX data/agents
+                </span>
+              </p>
+            )}
+            {docNote[d.key] === 'unreadable' && (
+              <p className="muted" style={{ marginTop: 0 }}>
+                ⚠ Permission denied — the file exists but can't be read directly or through the
+                container (is it running?). On the host run:{' '}
+                <span className="mono">
+                  sudo setfacl -R -m u:$USER:rwX -m d:u:$USER:rwX data/agents
+                </span>{' '}
+                (as the account running Attaché).
               </p>
             )}
             <textarea

@@ -160,13 +160,24 @@ export function agentFileDefs(agent: Agent): ContainerFileDef[] {
   return containerDefFor(agent)?.files ?? []
 }
 
-/** null = unknown key. `missing` = file doesn't exist on disk (never created, or the data dir moved). */
-export function readAgentDoc(agent: Agent, key: string): { content: string; missing: boolean } | null {
+/**
+ * null = unknown key. `missing` = file doesn't exist on disk (never created,
+ * or the data dir moved). `unreadable` = exists but EACCES — typically owned
+ * by the container's internal user on a Linux host.
+ */
+export function readAgentDoc(
+  agent: Agent,
+  key: string,
+): { content: string; missing: boolean; unreadable?: boolean } | null {
   const f = agentFileDefs(agent).find((f) => f.key === key)
   if (!f || !isSafeRelPath(f.path)) return null
   const p = join(agentDir(agent.id), f.path)
   if (!existsSync(p)) return { content: '', missing: true }
-  return { content: readFileSync(p, 'utf8'), missing: false }
+  try {
+    return { content: readFileSync(p, 'utf8'), missing: false }
+  } catch {
+    return { content: '', missing: false, unreadable: true }
+  }
 }
 
 export function writeAgentDoc(agent: Agent, key: string, content: string): boolean {

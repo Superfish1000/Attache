@@ -21,6 +21,47 @@ export async function dockerAvailable(): Promise<boolean> {
   }
 }
 
+/**
+ * Reads a file from the agent's data dir through the Docker daemon
+ * (getArchive → tar). Works when host permissions block a direct read —
+ * files the container's internal user owns — and on stopped containers.
+ * Returns null if the container or file doesn't exist or docker is down.
+ */
+export async function readAgentFileViaDocker(agent: Agent, relPath: string): Promise<string | null> {
+  try {
+    const container = getDocker().getContainer(nameFor(agent.id))
+    const inPath = `${agent.config.mountPath.replace(/\/+$/, '')}/${relPath.replaceAll('\\', '/')}`
+    const stream = await container.getArchive({ path: inPath })
+    const chunks: Buffer[] = []
+    await new Promise<void>((res, rej) => {
+      stream.on('data', (c: Buffer) => chunks.push(c))
+      stream.on('end', res)
+      stream.on('error', rej)
+    })
+    const tar = Buffer.concat(chunks)
+    // Minimal tar walk: return the body of the first regular-file entry.
+    let off = 0
+    while (off + 512 <= tar.length) {
+      const name = tar.subarray(off, off + 100).toString('utf8').replace(/\0[^]*$/, '')
+      if (!name) break // zero block = end of archive
+      const size = parseInt(tar.subarray(off + 124, off + 136).toString('ascii').trim() || '0', 8)
+      const type = tar[off + 156]
+      off += 512
+      if (type === 0x30 || type === 0) {
+        // Truncated archive (header only): daemon could stat but not read the
+        // bytes — e.g. Docker Desktop file-sharing hitting host ACLs. Fail
+        // properly instead of returning fake-empty content.
+        if (off + size > tar.length) return null
+        return tar.subarray(off, off + size).toString('utf8')
+      }
+      off += Math.ceil(size / 512) * 512
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 const nameFor = (agentId: string) => `attache-agent-${agentId}`
 
 export interface ContainerInfo {

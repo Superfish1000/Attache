@@ -79,7 +79,9 @@ export const api = {
     container: (id: string) => req<ContainerState>(`/api/agents/${id}/container`),
     containerLogs: (id: string) => req<{ logs: string }>(`/api/agents/${id}/container/logs`),
     doc: (id: string, name: string) =>
-      req<{ content: string; missing?: boolean }>(`/api/agents/${id}/doc/${name}`),
+      req<{ content: string; missing?: boolean; unreadable?: boolean; viaContainer?: boolean }>(
+        `/api/agents/${id}/doc/${name}`,
+      ),
     saveDoc: (id: string, name: string, content: string) =>
       req<{ ok: boolean }>(`/api/agents/${id}/doc/${name}`, json('PUT', { content })),
     cronJobs: (id: string) => req<{ jobs: string[] }>(`/api/agents/${id}/cron`),
