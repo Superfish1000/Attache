@@ -117,6 +117,27 @@ export async function startAgentContainer(agent: Agent): Promise<ContainerInfo> 
   return containerInfo(agent.id)
 }
 
+/**
+ * Restarts the agent's dashboard service so it re-reads provisioned creds
+ * (s6 relaunches it after --stop). Best-effort: throws only never — callers
+ * fire-and-forget after password changes.
+ */
+export async function bounceDashboard(agentId: string): Promise<void> {
+  try {
+    const container = getDocker().getContainer(nameFor(agentId))
+    const exec = await container.exec({
+      Cmd: ['/opt/hermes/.venv/bin/hermes', 'dashboard', '--stop'],
+      User: 'hermes',
+      Env: ['HOME=/opt/data'],
+      AttachStdout: false,
+      AttachStderr: false,
+    })
+    await exec.start({ Detach: true })
+  } catch {
+    // container stopped / not hermes / daemon down — creds apply on next start
+  }
+}
+
 /** Tail of container output with docker's stream-multiplex headers stripped. */
 export async function containerLogs(agentId: string, tail = 200): Promise<string> {
   const buf = (await getDocker()

@@ -222,7 +222,7 @@ export default function Chat() {
                 href={`http://localhost:${agent.config.ports['9119']}`}
                 target="_blank"
                 rel="noreferrer"
-                title="Hermes' own web dashboard for this agent"
+                title="Hermes' own web dashboard — sign in with your Attache email & password"
               >
                 Open dashboard ↗
               </a>

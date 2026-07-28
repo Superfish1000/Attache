@@ -339,7 +339,7 @@ export default function AgentDetail() {
               href={`http://localhost:${agent.config.ports['9119']}`}
               target="_blank"
               rel="noreferrer"
-              title="Hermes' own web dashboard for this agent"
+              title="Hermes' own web dashboard — sign in with the owner's Attache email & password"
             >
               Open dashboard ↗
             </a>

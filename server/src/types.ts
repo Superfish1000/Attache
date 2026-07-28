@@ -9,6 +9,8 @@ export interface User {
   o365Id?: string
   /** scrypt hash — absent means the account cannot log in yet */
   passwordHash?: string
+  /** Hermes-format scrypt hash of the same password, provisioned to owned agents' dashboards. */
+  dashboardHash?: string
   createdAt: string
 }
 

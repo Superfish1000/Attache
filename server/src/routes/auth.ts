@@ -1,12 +1,13 @@
 import type { FastifyInstance } from 'fastify'
-import { db } from '../store.js'
-import { createUser } from '../users.js'
+import { db, save } from '../store.js'
+import { createUser, syncOwnerDashboards } from '../users.js'
 import {
   SESSION_COOKIE,
   createSession,
   destroySession,
   getSessionUser,
   hashPassword,
+  hermesHashPassword,
   needsSetup,
   safeUser,
   verifyPassword,
@@ -42,6 +43,9 @@ export default async function authRoutes(app: FastifyInstance) {
     if (existing) {
       existing.role = 'admin'
       existing.passwordHash = hashPassword(password)
+      existing.dashboardHash = hermesHashPassword(password)
+      save()
+      syncOwnerDashboards(existing)
       user = existing
     } else {
       user = createUser({
@@ -63,6 +67,13 @@ export default async function authRoutes(app: FastifyInstance) {
     const user = db.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())
     if (!user?.passwordHash || !verifyPassword(password, user.passwordHash)) {
       return reply.code(401).send({ error: 'invalid email or password' })
+    }
+    // opportunistic backfill: accounts whose password predates dashboard
+    // provisioning get their agents' dashboard logins on next sign-in
+    if (!user.dashboardHash) {
+      user.dashboardHash = hermesHashPassword(password)
+      save()
+      syncOwnerDashboards(user)
     }
     const session = createSession(user.id)
     reply.setCookie(SESSION_COOKIE, session.token, cookieOpts(db.settings.security.sessionTtlHours * 3600))

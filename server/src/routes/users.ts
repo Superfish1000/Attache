@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { db, save } from '../store.js'
-import { createUser, deleteUser } from '../users.js'
-import { hashPassword, requireAdmin, safeUser } from '../auth.js'
+import { createUser, deleteUser, syncOwnerDashboards } from '../users.js'
+import { hashPassword, hermesHashPassword, requireAdmin, safeUser } from '../auth.js'
 import type { Role } from '../types.js'
 
 const isRole = (r: unknown): r is Role => r === 'admin' || r === 'standard'
@@ -76,7 +76,9 @@ export default async function userRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'password must be at least 8 characters' })
     }
     user.passwordHash = hashPassword(password)
+    user.dashboardHash = hermesHashPassword(password)
     save()
+    syncOwnerDashboards(user)
     return safeUser(user)
   })
 

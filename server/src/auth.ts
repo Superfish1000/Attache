@@ -21,6 +21,17 @@ export function hashPassword(password: string): string {
   return `scrypt:${SCRYPT_N}:${SCRYPT_R}:${SCRYPT_P}:${salt.toString('base64')}:${hash.toString('base64')}`
 }
 
+/**
+ * Hash in the format Hermes' dashboard basic-auth provider verifies
+ * (`scrypt$N$r$p$<salt_b64>$<dk_b64>`) — lets Attache provision dashboard
+ * logins without plaintext at rest anywhere.
+ */
+export function hermesHashPassword(password: string): string {
+  const salt = randomBytes(16)
+  const dk = scryptSync(password, salt, 64, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P })
+  return `scrypt$${SCRYPT_N}$${SCRYPT_R}$${SCRYPT_P}$${salt.toString('base64')}$${dk.toString('base64')}`
+}
+
 export function verifyPassword(password: string, stored: string): boolean {
   const parts = stored.split(':')
   if (parts.length !== 6 || parts[0] !== 'scrypt') return false

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { dirname, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { AGENTS_DIR, db, newId, save } from './store.js'
-import type { Agent, AgentConfig, ContainerDef, ContainerFileDef } from './types.js'
+import type { Agent, AgentConfig, ContainerDef, ContainerFileDef, User } from './types.js'
 
 /** Sequential free host ports starting at settings.docker.portRangeStart. */
 function nextFreeHostPorts(count: number): number[] {
@@ -72,6 +72,7 @@ export function createAgent(
   }
   mkdirSync(agentDir(agent.id), { recursive: true })
   resetAgentFiles(agent)
+  writeDashboardCreds(agent, user)
   db.agents.push(agent)
   save()
   return agent
@@ -113,6 +114,34 @@ export function syncAgentPorts(agent: Agent): boolean {
   })
   save()
   return true
+}
+
+/**
+ * Provisions the owner's dashboard login into the agent's `.env` (read by
+ * Hermes at startup): username = owner email, password as a Hermes-format
+ * scrypt hash — no plaintext at rest. The per-agent session-signing secret
+ * is generated once and preserved so dashboard sessions survive restarts.
+ * Other `.env` lines are left untouched.
+ */
+export function writeDashboardCreds(agent: Agent, owner: User): void {
+  if (!owner.dashboardHash) return
+  const envPath = join(agentDir(agent.id), '.env')
+  const lines = existsSync(envPath) ? readFileSync(envPath, 'utf8').split(/\r?\n/) : []
+  const keep = lines.filter(
+    (l) => l.trim() !== '' && !l.startsWith('HERMES_DASHBOARD_BASIC_AUTH_'),
+  )
+  const existingSecret = lines
+    .find((l) => l.startsWith('HERMES_DASHBOARD_BASIC_AUTH_SECRET='))
+    ?.split('=')
+    .slice(1)
+    .join('=')
+  keep.push(
+    `HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${owner.email}`,
+    `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=${owner.dashboardHash}`,
+    `HERMES_DASHBOARD_BASIC_AUTH_SECRET=${existingSecret || randomBytes(32).toString('hex')}`,
+  )
+  mkdirSync(agentDir(agent.id), { recursive: true })
+  writeFileSync(envPath, keep.join('\n') + '\n')
 }
 
 /** Behavior files this agent exposes, from its container definition. */
