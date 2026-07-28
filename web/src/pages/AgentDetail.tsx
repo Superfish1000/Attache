@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
-import { Chip, EnvVarsHelp, ErrorBanner, InfoPopup, fmtDate } from '../components'
+import { Chip, EnvVarsHelp, ErrorBanner, InfoPopup, fmtDate, normalizeImageRef } from '../components'
 import { useAuth } from '../auth'
 import type { Agent, AgentDocInfo, ContainerDef, ContainerState, McpInfo, User } from '../types'
 
@@ -105,7 +105,7 @@ export default function AgentDetail() {
       const updated = await api.agents.update(id, {
         name,
         config: {
-          image,
+          image: normalizeImageRef(image),
           command: command.split(/\s+/).filter(Boolean),
           env,
           mountPath,
@@ -346,7 +346,7 @@ export default function AgentDetail() {
             Ports:{' '}
             <span className="mono">
               {Object.entries(agent.config.ports)
-                .map(([cp, hp]) => `${cp} → localhost:${hp}`)
+                .map(([cp, hp]) => `${cp} → ${window.location.hostname}:${hp}`)
                 .join(' · ')}
             </span>
           </p>
@@ -401,7 +401,7 @@ export default function AgentDetail() {
           {container?.running && agent.config.ports['9119'] && (
             <a
               className="btn"
-              href={`http://localhost:${agent.config.ports['9119']}`}
+              href={`http://${window.location.hostname}:${agent.config.ports['9119']}`}
               target="_blank"
               rel="noreferrer"
               title="Hermes' own web dashboard — sign in with the owner's Attache email & password"
@@ -447,7 +447,11 @@ export default function AgentDetail() {
         </div>
         <div className="field">
           <label>Container image</label>
-          <input value={image} disabled={!admin} onChange={(e) => setImage(e.target.value)} />
+          <input
+            value={image}
+            disabled={!admin}
+            onChange={(e) => setImage(normalizeImageRef(e.target.value))}
+          />
         </div>
         <div className="field">
           <label>Command (space-separated)</label>

@@ -318,6 +318,21 @@ export function ErrorBanner({ message, onDismiss }: { message: string; onDismiss
   )
 }
 
+/**
+ * Docker requires the repository part of an image reference to be lowercase
+ * (tags/digests may keep their case). Also strips whitespace, which is never
+ * valid anywhere in a reference.
+ */
+export function normalizeImageRef(value: string): string {
+  const v = value.replace(/\s+/g, '')
+  const at = v.indexOf('@')
+  const [ref, digest] = at === -1 ? [v, ''] : [v.slice(0, at), v.slice(at)]
+  const colon = ref.lastIndexOf(':')
+  const hasTag = colon > -1 && !ref.slice(colon + 1).includes('/')
+  const [name, tag] = hasTag ? [ref.slice(0, colon), ref.slice(colon)] : [ref, '']
+  return name.toLowerCase() + tag + digest
+}
+
 export function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleString()

@@ -7,6 +7,7 @@ import {
   InfoPopup,
   McpServersHelp,
   McpTemplatesHelp,
+  normalizeImageRef,
 } from '../components'
 import type { Agent, ContainerDef, ContainerFileDef, McpServerDef } from '../types'
 
@@ -96,34 +97,39 @@ export default function Containers() {
     }
   }
 
+  /** Persists the editor state to the definition. Throws on validation/API errors. */
+  const persistDef = async () => {
+    let env: Record<string, string>
+    try {
+      const parsed = JSON.parse(envText || '{}')
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error()
+      env = Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, String(v)]))
+    } catch {
+      throw new Error('Env must be a JSON object of key/value strings')
+    }
+    return api.containerDefs.update(selId, {
+      name,
+      image: normalizeImageRef(image),
+      command: command.split(/\s+/).filter(Boolean),
+      mountPath,
+      containerPorts: portsCsv.split(/[,\s]+/).filter(Boolean).map(Number),
+      env,
+      memoryMb: memoryMb ? Number(memoryMb) : 0,
+      cpus: cpus ? Number(cpus) : 0,
+      files,
+      mcpServers,
+      mcpProvisionCommand: mcpCmd,
+      mcpTokenEnvKey: mcpEnvKey,
+      mcpLoginCommand: mcpLogin,
+      dockerfile: imgMode === 'dockerfile' ? dockerfile : '',
+    })
+  }
+
   const saveDef = async () => {
     setBusy(true)
     setErr('')
     try {
-      let env: Record<string, string>
-      try {
-        const parsed = JSON.parse(envText || '{}')
-        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error()
-        env = Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, String(v)]))
-      } catch {
-        throw new Error('Env must be a JSON object of key/value strings')
-      }
-      const updated = await api.containerDefs.update(selId, {
-        name,
-        image,
-        command: command.split(/\s+/).filter(Boolean),
-        mountPath,
-        containerPorts: portsCsv.split(/[,\s]+/).filter(Boolean).map(Number),
-        env,
-        memoryMb: memoryMb ? Number(memoryMb) : 0,
-        cpus: cpus ? Number(cpus) : 0,
-        files,
-        mcpServers,
-        mcpProvisionCommand: mcpCmd,
-        mcpTokenEnvKey: mcpEnvKey,
-        mcpLoginCommand: mcpLogin,
-        dockerfile: imgMode === 'dockerfile' ? dockerfile : '',
-      })
+      const updated = await persistDef()
       flash(`${updated.name} saved`)
       reload()
     } catch (e) {
@@ -175,11 +181,17 @@ export default function Containers() {
   const removeMcp = (i: number) => setMcpServers((ss) => ss.filter((_, j) => j !== i))
 
   const buildImage = async () => {
-    if (!confirm(`Build the Dockerfile as image "${image}"? This can take several minutes.`)) return
+    if (
+      !confirm(
+        `Save the definition and build the Dockerfile as image "${normalizeImageRef(image)}"? This can take several minutes.`,
+      )
+    )
+      return
     setBuilding(true)
     setErr('')
     setBuildOut('')
     try {
+      await persistDef()
       const res = await api.containerDefs.build(selId)
       setBuildOut(
         `${res.ok ? '✓ built' : '✗ failed'} (${res.method})\n${res.output}`,
@@ -267,7 +279,11 @@ export default function Containers() {
               </div>
               <div className="field" style={{ flex: 1 }}>
                 <label>{imgMode === 'dockerfile' ? 'Built image tag' : 'Image'}</label>
-                <input value={image} onChange={(e) => setImage(e.target.value)} style={{ width: '100%' }} />
+                <input
+                  value={image}
+                  onChange={(e) => setImage(normalizeImageRef(e.target.value))}
+                  style={{ width: '100%' }}
+                />
               </div>
             </div>
             {imgMode === 'dockerfile' && (
@@ -300,7 +316,7 @@ export default function Containers() {
                       {building ? 'Building…' : 'Build image'}
                     </button>
                     <span className="muted" style={{ alignSelf: 'center' }}>
-                      Save the definition first — the build uses the saved Dockerfile.
+                      Saves the definition first, then builds what was saved.
                     </span>
                   </div>
                   {buildOut && <pre className="logbox">{buildOut}</pre>}

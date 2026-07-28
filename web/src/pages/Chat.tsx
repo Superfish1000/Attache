@@ -219,7 +219,7 @@ export default function Chat() {
             {running && agent?.config.ports['9119'] && (
               <a
                 className="btn"
-                href={`http://localhost:${agent.config.ports['9119']}`}
+                href={`http://${window.location.hostname}:${agent.config.ports['9119']}`}
                 target="_blank"
                 rel="noreferrer"
                 title="Hermes' own web dashboard — sign in with your Attache email & password"
