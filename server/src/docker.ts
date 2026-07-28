@@ -145,6 +145,37 @@ export async function writeAgentFileViaDocker(
   }
 }
 
+/**
+ * Restores host-side access to the container-owned data dir (Linux hosts).
+ * Runtimes like hermes chown their mount to an internal user at every
+ * container start, locking out the account running Attaché. This execs as
+ * root inside the container: group := Attaché's own gid, g+rwX, setgid on
+ * dirs so files the runtime creates later inherit the group. Owner stays the
+ * runtime's user — it never notices. Scheduled twice after each start since
+ * the entrypoint's own chown timing varies; best-effort, no-op off Linux.
+ * Files the runtime creates between fixes are group-readable (its umask);
+ * they become group-writable at the next start/fix — GUI writes fall back
+ * through docker meanwhile.
+ */
+export function scheduleMountGroupFix(agent: Agent): void {
+  if (process.platform !== 'linux' || typeof process.getgid !== 'function') return
+  const gid = process.getgid()
+  const mount = agent.config.mountPath.replace(/\/+$/, '')
+  const cmd = `chown -R :${gid} "${mount}" && chmod -R g+rwX "${mount}" && find "${mount}" -type d -exec chmod g+s {} +`
+  for (const delayMs of [20_000, 120_000]) {
+    setTimeout(async () => {
+      try {
+        const exec = await getDocker()
+          .getContainer(nameFor(agent.id))
+          .exec({ Cmd: ['sh', '-c', cmd], AttachStdout: false, AttachStderr: false })
+        await exec.start({ Detach: true })
+      } catch {
+        // container stopped / docker down — the next start reschedules
+      }
+    }, delayMs).unref?.()
+  }
+}
+
 /** Host-first .env upsert; falls back to writing through the container. */
 export async function upsertAgentEnvSafe(agent: Agent, entries: Record<string, string>): Promise<void> {
   try {
@@ -274,6 +305,7 @@ export async function startAgentContainer(agent: Agent): Promise<ContainerInfo> 
     },
   })
   await container.start()
+  scheduleMountGroupFix(agent)
   return containerInfo(agent.id)
 }
 
