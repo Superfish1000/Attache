@@ -13,6 +13,8 @@ import type {
   SettingsView,
   StatusResponse,
   SyncResult,
+  UpdateCheck,
+  UpdateResult,
   User,
 } from './types'
 
@@ -117,5 +119,9 @@ export const api = {
   },
   mcp: {
     status: () => req<McpStatus>('/api/mcp/status'),
+  },
+  update: {
+    check: () => req<UpdateCheck>('/api/update/check'),
+    apply: () => req<UpdateResult>('/api/update/apply', { method: 'POST' }),
   },
 }

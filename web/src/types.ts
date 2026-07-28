@@ -134,6 +134,23 @@ export interface SettingsView {
   dataDir: string
 }
 
+export interface UpdateCheck {
+  repo: string
+  currentShort: string
+  status: 'up-to-date' | 'behind' | 'ahead' | 'diverged' | 'unknown'
+  behindBy: number
+  latest: { short: string; message: string; date: string } | null
+}
+
+export interface UpdateResult {
+  updated: boolean
+  from: string
+  to: string
+  pull: string
+  installNote: string
+  note: string
+}
+
 export interface MeResponse {
   user: User | null
   needsSetup: boolean
