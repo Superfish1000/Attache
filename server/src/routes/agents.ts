@@ -17,6 +17,7 @@ import {
   containerInfo,
   containerLogs,
   dockerAvailable,
+  provisionMcpServers,
   removeAgentContainer,
   startAgentContainer,
   stopAgentContainer,
@@ -243,6 +244,7 @@ export default async function agentRoutes(app: FastifyInstance) {
       await removeAgentContainer(agent.id)
       const filesReset = resetFiles ? resetAgentFiles(agent) : []
       const info = await startAgentContainer(agent)
+      void provisionMcpServers(agent).catch(() => undefined) // best-effort background
       return { available: true, ...info, filesReset }
     } catch (err) {
       req.log.error(err)
@@ -330,6 +332,21 @@ export default async function agentRoutes(app: FastifyInstance) {
     return reply
   })
 
+  /** Re-run the definition's MCP provisioning and return per-server results. */
+  app.post('/:id/mcp/provision', async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply
+    const agent = accessibleAgent(req, reply)
+    if (!agent) return reply
+    if (!(await dockerAvailable())) {
+      return reply.code(503).send({ error: 'Docker daemon is not available' })
+    }
+    const info = await containerInfo(agent.id)
+    if (!info.exists || !info.running) {
+      return reply.code(409).send({ error: 'agent container is not running — start it first' })
+    }
+    return { results: await provisionMcpServers(agent) }
+  })
+
   app.post('/:id/container/:action', async (req, reply) => {
     const agent = accessibleAgent(req, reply)
     if (!agent) return reply
@@ -343,7 +360,9 @@ export default async function agentRoutes(app: FastifyInstance) {
         // bindings only apply at container creation — syncing for an existing container
         // would record mappings docker never made (use Regenerate to apply new ports)
         if (!(await containerInfo(agent.id)).exists) syncAgentPorts(agent)
-        return { available: true, ...(await startAgentContainer(agent)) }
+        const info = await startAgentContainer(agent)
+        void provisionMcpServers(agent).catch(() => undefined) // best-effort background
+        return { available: true, ...info }
       }
       if (action === 'stop') return { available: true, ...(await stopAgentContainer(agent.id)) }
       if (action === 'remove') return { available: true, ...(await removeAgentContainer(agent.id)) }

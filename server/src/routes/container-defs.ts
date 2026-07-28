@@ -82,6 +82,29 @@ function applyBody(def: ContainerDef, body: Partial<ContainerDef>): string | nul
     if (err) return err
     def.files = body.files as ContainerFileDef[]
   }
+  if (body.mcpServers !== undefined) {
+    if (!Array.isArray(body.mcpServers)) return 'mcpServers must be an array'
+    const seen = new Set<string>()
+    for (const s of body.mcpServers) {
+      if (typeof s !== 'object' || s === null) return 'each MCP server must be an object'
+      if (typeof s.name !== 'string' || !/^[\w-]+$/.test(s.name)) {
+        return `MCP server name '${String(s.name)}' must be letters, digits, dashes, underscores`
+      }
+      if (seen.has(s.name)) return `duplicate MCP server name '${s.name}'`
+      seen.add(s.name)
+      if (typeof s.url !== 'string' || !/^https?:\/\/\S+$/.test(s.url.trim())) {
+        return `MCP server '${s.name}' needs an http(s) URL`
+      }
+      s.url = s.url.trim()
+    }
+    def.mcpServers = body.mcpServers
+  }
+  if (body.mcpProvisionCommand !== undefined) {
+    if (typeof body.mcpProvisionCommand !== 'string') {
+      return 'mcpProvisionCommand must be a string'
+    }
+    def.mcpProvisionCommand = body.mcpProvisionCommand
+  }
   return null
 }
 
@@ -105,6 +128,8 @@ export default async function containerDefRoutes(app: FastifyInstance) {
       mountPath: '/data',
       containerPorts: [],
       files: [],
+      mcpServers: [],
+      mcpProvisionCommand: '',
       createdAt: new Date().toISOString(),
     }
     const err = applyBody(def, (req.body ?? {}) as Partial<ContainerDef>)

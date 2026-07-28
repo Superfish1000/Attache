@@ -1,5 +1,6 @@
 import Docker from 'dockerode'
 import { resolve } from 'node:path'
+import { Writable } from 'node:stream'
 import type { Agent } from './types.js'
 import { agentDir } from './agents.js'
 import { db } from './store.js'
@@ -136,6 +137,72 @@ export async function bounceDashboard(agentId: string): Promise<void> {
   } catch {
     // container stopped / not hermes / daemon down — creds apply on next start
   }
+}
+
+export interface McpProvisionResult {
+  name: string
+  ok: boolean
+  output: string
+}
+
+/**
+ * Runs the definition's MCP provision-command template once per configured
+ * server inside the agent's container. Generic: the template is
+ * runtime-specific shell ({{NAME}}/{{URL}} substituted), executed as root
+ * via sh -c — templates drop privileges themselves where needed.
+ */
+export async function provisionMcpServers(agent: Agent): Promise<McpProvisionResult[]> {
+  const def = db.containers.find((c) => c.id === agent.containerId)
+  if (!def?.mcpProvisionCommand.trim() || def.mcpServers.length === 0) return []
+  const container = getDocker().getContainer(nameFor(agent.id))
+  const results: McpProvisionResult[] = []
+  for (const server of def.mcpServers) {
+    const cmd = def.mcpProvisionCommand
+      .replaceAll('{{NAME}}', server.name)
+      .replaceAll('{{URL}}', server.url)
+    try {
+      const exec = await container.exec({
+        Cmd: ['sh', '-c', cmd],
+        AttachStdout: true,
+        AttachStderr: true,
+      })
+      const stream = await exec.start({ hijack: true, stdin: false })
+      const bufs: Buffer[] = []
+      const sink = new Writable({
+        write(chunk: Buffer, _enc: string, cb: () => void) {
+          bufs.push(Buffer.from(chunk))
+          cb()
+        },
+      })
+      getDocker().modem.demuxStream(stream, sink, sink)
+      // hijacked exec streams never emit 'end' on some daemons (observed on
+      // 20.10.x) — poll the exec state for completion instead, capped at 2 min
+      let inspect = await exec.inspect()
+      for (let tick = 0; inspect.Running && tick < 120; tick++) {
+        await new Promise((res) => setTimeout(res, 1000))
+        inspect = await exec.inspect()
+      }
+      try {
+        stream.destroy()
+      } catch {
+        // already closed
+      }
+      if (inspect.Running) {
+        results.push({ name: server.name, ok: false, output: 'timed out after 120s' })
+        continue
+      }
+      const output = Buffer.concat(bufs)
+        .toString('utf8')
+        // eslint-disable-next-line no-control-regex
+        .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
+        .trim()
+        .slice(-500)
+      results.push({ name: server.name, ok: inspect.ExitCode === 0, output })
+    } catch (err) {
+      results.push({ name: server.name, ok: false, output: (err as Error).message.slice(0, 300) })
+    }
+  }
+  return results
 }
 
 /** Tail of container output with docker's stream-multiplex headers stripped. */

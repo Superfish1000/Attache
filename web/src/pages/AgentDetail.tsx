@@ -203,6 +203,33 @@ export default function AgentDetail() {
     }
   }
 
+  const provisionMcp = async () => {
+    setBusy(true)
+    setErr('')
+    try {
+      const res = await api.agents.provisionMcp(id)
+      if (res.results.length === 0) {
+        flash('No MCP servers configured on this definition')
+      } else {
+        const failed = res.results.filter((r) => !r.ok)
+        flash(
+          failed.length === 0
+            ? `MCP provisioned: ${res.results.map((r) => r.name).join(', ')}`
+            : `MCP: ${res.results.length - failed.length} ok, ${failed.length} failed`,
+        )
+        setLogs(
+          res.results
+            .map((r) => `── ${r.name}: ${r.ok ? 'OK' : 'FAILED'} ──\n${r.output}`)
+            .join('\n\n'),
+        )
+      }
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const fetchLogs = async () => {
     setErr('')
     try {
@@ -333,6 +360,17 @@ export default function AgentDetail() {
           <button className="btn" disabled={!dockerUp} onClick={fetchLogs}>
             {logs === null ? 'View logs' : 'Refresh logs'}
           </button>
+          {admin &&
+            (defs.find((d) => d.id === agent.containerId)?.mcpServers.length ?? 0) > 0 && (
+              <button
+                className="btn"
+                disabled={!dockerUp || busy || !container?.running}
+                title="Re-run the definition's MCP server provisioning inside the container"
+                onClick={provisionMcp}
+              >
+                Provision MCP
+              </button>
+            )}
           {container?.running && agent.config.ports['9119'] && (
             <a
               className="btn"

@@ -47,6 +47,14 @@ export interface ContainerFileDef {
   template: string
 }
 
+/** An MCP server pre-loaded into agents of a definition. */
+export interface McpServerDef {
+  /** Config key / identifier inside the agent runtime. */
+  name: string
+  /** HTTP/SSE endpoint URL. */
+  url: string
+}
+
 /** A reusable container setup: image/runtime defaults + the behavior files agents expose. */
 export interface ContainerDef {
   id: string
@@ -61,6 +69,14 @@ export interface ContainerDef {
   memoryMb?: number
   cpus?: number
   files: ContainerFileDef[]
+  /** MCP servers provisioned into each agent of this definition. */
+  mcpServers: McpServerDef[]
+  /**
+   * Shell template run inside the container (as root, via sh -c) once per MCP
+   * server; {{NAME}} and {{URL}} are substituted. Runtime-specific — drop
+   * privileges inside the template if the runtime needs it. Empty = disabled.
+   */
+  mcpProvisionCommand: string
   createdAt: string
 }
 

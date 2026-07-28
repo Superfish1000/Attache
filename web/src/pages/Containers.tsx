@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { Chip, EnvVarsHelp, ErrorBanner, InfoPopup } from '../components'
-import type { Agent, ContainerDef, ContainerFileDef } from '../types'
+import type { Agent, ContainerDef, ContainerFileDef, McpServerDef } from '../types'
 
 export default function Containers() {
   const [defs, setDefs] = useState<ContainerDef[]>([])
@@ -17,6 +17,8 @@ export default function Containers() {
   const [memoryMb, setMemoryMb] = useState('')
   const [cpus, setCpus] = useState('')
   const [files, setFiles] = useState<ContainerFileDef[]>([])
+  const [mcpServers, setMcpServers] = useState<McpServerDef[]>([])
+  const [mcpCmd, setMcpCmd] = useState('')
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -32,6 +34,8 @@ export default function Containers() {
     setMemoryMb(def.memoryMb ? String(def.memoryMb) : '')
     setCpus(def.cpus ? String(def.cpus) : '')
     setFiles(def.files.map((f) => ({ ...f })))
+    setMcpServers(def.mcpServers.map((s) => ({ ...s })))
+    setMcpCmd(def.mcpProvisionCommand)
   }, [])
 
   const reload = useCallback(
@@ -96,6 +100,8 @@ export default function Containers() {
         memoryMb: memoryMb ? Number(memoryMb) : 0,
         cpus: cpus ? Number(cpus) : 0,
         files,
+        mcpServers,
+        mcpProvisionCommand: mcpCmd,
       })
       flash(`${updated.name} saved`)
       reload()
@@ -138,6 +144,13 @@ export default function Containers() {
     setFiles((fs) => [...fs, { key: '', label: '', path: '', hint: '', template: '' }])
 
   const removeFile = (i: number) => setFiles((fs) => fs.filter((_, j) => j !== i))
+
+  const updMcp = (i: number, patch: Partial<McpServerDef>) =>
+    setMcpServers((ss) => ss.map((s, j) => (j === i ? { ...s, ...patch } : s)))
+
+  const addMcp = () => setMcpServers((ss) => [...ss, { name: '', url: '' }])
+
+  const removeMcp = (i: number) => setMcpServers((ss) => ss.filter((_, j) => j !== i))
 
   return (
     <>
@@ -293,6 +306,47 @@ export default function Containers() {
               <button className="btn" onClick={addFile}>
                 Add file
               </button>
+            </div>
+
+            <h2 style={{ marginTop: 18 }}>MCP servers</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Pre-loaded into every agent of this definition at container start (and via the
+              agent page's provision button). The command template below defines how this
+              runtime ingests one server — <span className="mono">{'{{NAME}}'}</span> and{' '}
+              <span className="mono">{'{{URL}}'}</span> are substituted per server.
+            </p>
+            {mcpServers.map((s, i) => (
+              <div className="form-row" key={i} style={{ marginBottom: 10 }}>
+                <div className="field">
+                  <label>Name</label>
+                  <input
+                    value={s.name}
+                    onChange={(e) => updMcp(i, { name: e.target.value })}
+                    placeholder="github"
+                  />
+                </div>
+                <div className="field" style={{ flex: 1 }}>
+                  <label>URL (http/sse endpoint)</label>
+                  <input
+                    value={s.url}
+                    onChange={(e) => updMcp(i, { url: e.target.value })}
+                    placeholder="https://example.com/mcp"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <button className="btn btn-danger" onClick={() => removeMcp(i)}>
+                  Remove
+                </button>
+              </div>
+            ))}
+            <div className="btn-row">
+              <button className="btn" onClick={addMcp}>
+                Add MCP server
+              </button>
+            </div>
+            <div className="field" style={{ marginTop: 12 }}>
+              <label>Provision command template (runtime-specific; blank = disabled)</label>
+              <textarea rows={3} value={mcpCmd} onChange={(e) => setMcpCmd(e.target.value)} />
             </div>
 
             <div className="btn-row" style={{ marginTop: 18 }}>

@@ -47,6 +47,15 @@ const HERMES_FILES = [
   { key: 'hermes', label: 'Context', path: '.hermes.md', hint: 'project context — auto-loaded when present', template: '' },
 ]
 
+/**
+ * How the stock Hermes definition ingests one MCP server. remove-first makes
+ * re-provisioning idempotent; runuser drops root so config files stay owned
+ * by the hermes user (root-owned files break the supervised gateway).
+ */
+export const HERMES_MCP_PROVISION =
+  'runuser -u hermes -- env HOME=/opt/data /opt/hermes/.venv/bin/hermes mcp remove {{NAME}} >/dev/null 2>&1; ' +
+  'runuser -u hermes -- env HOME=/opt/data /opt/hermes/.venv/bin/hermes mcp add {{NAME}} --url {{URL}}'
+
 const defaults = (): DB => ({
   users: [],
   agents: [],
@@ -76,7 +85,15 @@ function load(): { db: DB; migrated: boolean } {
   const rd = raw.settings?.docker ?? {}
 
   // migrate pre-definition DBs: fold the old settings.docker defaults into a Hermes definition
-  let containers: ContainerDef[] = raw.containers ?? []
+  // (with mcp-field backfill for definitions saved before MCP support)
+  let containers: ContainerDef[] = (raw.containers ?? []).map(
+    (c: Omit<ContainerDef, 'mcpServers' | 'mcpProvisionCommand'> & Partial<ContainerDef>) => ({
+      ...c,
+      mcpServers: c.mcpServers ?? [],
+      mcpProvisionCommand:
+        c.mcpProvisionCommand ?? (c.name === 'Hermes' ? HERMES_MCP_PROVISION : ''),
+    }),
+  )
   let defaultContainerId: string = rd.defaultContainerId ?? ''
   let migrated = false
   if (containers.length === 0) {
@@ -89,6 +106,8 @@ function load(): { db: DB; migrated: boolean } {
       mountPath: rd.defaultMountPath ?? '/opt/data',
       containerPorts: rd.defaultContainerPorts ?? [8642],
       files: HERMES_FILES.map((f) => ({ ...f })),
+      mcpServers: [],
+      mcpProvisionCommand: HERMES_MCP_PROVISION,
       createdAt: new Date().toISOString(),
     }
     containers = [def]

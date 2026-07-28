@@ -5,6 +5,7 @@ import type {
   ContainerDef,
   ContainerState,
   ContainersResponse,
+  McpProvisionResult,
   McpStatus,
   MeResponse,
   O365Member,
@@ -91,6 +92,8 @@ export const api = {
         `/api/agents/${id}/container/regenerate`,
         json('POST', { resetFiles }),
       ),
+    provisionMcp: (id: string) =>
+      req<{ results: McpProvisionResult[] }>(`/api/agents/${id}/mcp/provision`, { method: 'POST' }),
   },
   o365: {
     settings: () => req<O365SettingsView>('/api/o365/settings'),

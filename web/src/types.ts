@@ -40,6 +40,17 @@ export interface ContainerFileDef {
   template: string
 }
 
+export interface McpServerDef {
+  name: string
+  url: string
+}
+
+export interface McpProvisionResult {
+  name: string
+  ok: boolean
+  output: string
+}
+
 export interface ContainerDef {
   id: string
   name: string
@@ -51,6 +62,8 @@ export interface ContainerDef {
   memoryMb?: number
   cpus?: number
   files: ContainerFileDef[]
+  mcpServers: McpServerDef[]
+  mcpProvisionCommand: string
   createdAt: string
 }
 
