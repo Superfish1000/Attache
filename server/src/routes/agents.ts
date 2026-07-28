@@ -168,8 +168,10 @@ export default async function agentRoutes(app: FastifyInstance) {
     const key = (req.params as { key: string }).key
     const doc = readAgentDoc(agent, key)
     if (doc === null) return reply.code(404).send({ error: 'unknown doc' })
-    if (doc.unreadable) {
-      // Host permissions block us (container-user-owned file) — read through docker instead.
+    if (doc.missing || doc.unreadable) {
+      // "missing" is not trustworthy: an unsearchable container-owned parent
+      // dir makes existsSync say false for files that exist. Check through
+      // docker before reporting either state.
       const path = agentFileDefs(agent).find((f) => f.key === key)?.path
       const via = path ? await readAgentFileViaDocker(agent, path) : null
       if (via !== null) return { content: via, missing: false, viaContainer: true }

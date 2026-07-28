@@ -540,10 +540,10 @@ export default function AgentDetail() {
           <div className="doc-body">
             {docNote[d.key] === 'missing' && (
               <p className="muted" style={{ marginTop: 0 }}>
-                ⚠ File not found on disk (<span className="mono">data/agents/{id}/{d.path}</span>).
-                It appears once the runtime first writes it — but if this agent used to have
-                content here, the data directory may have moved: check the container's mount
-                against the install path. Saving from here creates the file.
+                ⚠ File not found (<span className="mono">data/agents/{id}/{d.path}</span>) — not on
+                the host disk, and not visible through the container either (is it running?). It
+                appears once the runtime first writes it; if this agent used to have content here,
+                check the container's mount against the install path. Saving from here creates it.
               </p>
             )}
             {docNote[d.key] === 'via' && (
