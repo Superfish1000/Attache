@@ -74,6 +74,7 @@ export interface ContainerDef {
   mcpProvisionCommand: string
   mcpTokenEnvKey: string
   mcpLoginCommand: string
+  dockerfile: string
   createdAt: string
 }
 

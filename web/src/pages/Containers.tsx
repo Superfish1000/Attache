@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
-import { Chip, EnvVarsHelp, ErrorBanner, InfoPopup } from '../components'
+import {
+  Chip,
+  EnvVarsHelp,
+  ErrorBanner,
+  InfoPopup,
+  McpServersHelp,
+  McpTemplatesHelp,
+} from '../components'
 import type { Agent, ContainerDef, ContainerFileDef, McpServerDef } from '../types'
 
 export default function Containers() {
@@ -21,6 +28,9 @@ export default function Containers() {
   const [mcpCmd, setMcpCmd] = useState('')
   const [mcpEnvKey, setMcpEnvKey] = useState('')
   const [mcpLogin, setMcpLogin] = useState('')
+  const [dockerfile, setDockerfile] = useState('')
+  const [buildOut, setBuildOut] = useState('')
+  const [building, setBuilding] = useState(false)
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -40,6 +50,8 @@ export default function Containers() {
     setMcpCmd(def.mcpProvisionCommand)
     setMcpEnvKey(def.mcpTokenEnvKey)
     setMcpLogin(def.mcpLoginCommand)
+    setDockerfile(def.dockerfile)
+    setBuildOut('')
   }, [])
 
   const reload = useCallback(
@@ -108,6 +120,7 @@ export default function Containers() {
         mcpProvisionCommand: mcpCmd,
         mcpTokenEnvKey: mcpEnvKey,
         mcpLoginCommand: mcpLogin,
+        dockerfile,
       })
       flash(`${updated.name} saved`)
       reload()
@@ -158,6 +171,24 @@ export default function Containers() {
     setMcpServers((ss) => [...ss, { name: '', url: '', command: '', extraArgs: '', authToken: '' }])
 
   const removeMcp = (i: number) => setMcpServers((ss) => ss.filter((_, j) => j !== i))
+
+  const buildImage = async () => {
+    if (!confirm(`Build the Dockerfile as image "${image}"? This can take several minutes.`)) return
+    setBuilding(true)
+    setErr('')
+    setBuildOut('')
+    try {
+      const res = await api.containerDefs.build(selId)
+      setBuildOut(
+        `${res.ok ? '✓ built' : '✗ failed'} (${res.method})\n${res.output}`,
+      )
+      if (res.ok) flash(`Image ${image} built via ${res.method}`)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBuilding(false)
+    }
+  }
 
   return (
     <>
@@ -315,7 +346,12 @@ export default function Containers() {
               </button>
             </div>
 
-            <h2 style={{ marginTop: 18 }}>MCP servers</h2>
+            <h2 style={{ marginTop: 18 }}>
+              MCP servers{' '}
+              <InfoPopup title="Adding MCP servers">
+                <McpServersHelp />
+              </InfoPopup>
+            </h2>
             <p className="muted" style={{ marginTop: 0 }}>
               Pre-loaded into every agent of this definition at container start (and via the
               agent page's provision button). The command template below defines how this
@@ -382,7 +418,12 @@ export default function Containers() {
               </button>
             </div>
             <div className="field" style={{ marginTop: 12 }}>
-              <label>Provision command template (runtime-specific; blank = disabled)</label>
+              <label>
+                Provision command template (runtime-specific; blank = disabled){' '}
+                <InfoPopup title="MCP configuration & placeholders">
+                  <McpTemplatesHelp />
+                </InfoPopup>
+              </label>
               <textarea rows={3} value={mcpCmd} onChange={(e) => setMcpCmd(e.target.value)} />
             </div>
             <div className="field">
@@ -397,6 +438,31 @@ export default function Containers() {
               </label>
               <textarea rows={3} value={mcpLogin} onChange={(e) => setMcpLogin(e.target.value)} />
             </div>
+
+            <h2 style={{ marginTop: 18 }}>Image build</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Optional Dockerfile built as <span className="mono">{image || 'the image tag above'}</span>.
+              On old Docker daemons where builds abort, simple FROM+RUN files are automatically
+              built via run + commit instead.
+            </p>
+            <div className="field">
+              <label>Dockerfile</label>
+              <textarea
+                rows={6}
+                value={dockerfile}
+                onChange={(e) => setDockerfile(e.target.value)}
+                placeholder={'FROM nousresearch/hermes-agent:latest\nRUN npm install -g some-mcp-server'}
+              />
+            </div>
+            <div className="btn-row">
+              <button className="btn" disabled={building || !dockerfile.trim()} onClick={buildImage}>
+                {building ? 'Building…' : 'Build image'}
+              </button>
+              <span className="muted" style={{ alignSelf: 'center' }}>
+                Save the definition first — the build uses the saved Dockerfile.
+              </span>
+            </div>
+            {buildOut && <pre className="logbox">{buildOut}</pre>}
 
             <div className="btn-row" style={{ marginTop: 18 }}>
               <button className="btn btn-primary" disabled={busy} onClick={saveDef}>

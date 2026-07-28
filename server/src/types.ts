@@ -106,6 +106,12 @@ export interface ContainerDef {
    * (device codes, URLs) to the user. Empty = no sign-in button.
    */
   mcpLoginCommand: string
+  /**
+   * Optional Dockerfile for this definition's image. "Build image" builds it
+   * tagged as `image`. On daemons whose seccomp breaks builds, simple
+   * FROM+RUN files are emulated via run (with settings securityOpt) + commit.
+   */
+  dockerfile: string
   createdAt: string
 }
 

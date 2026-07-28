@@ -114,6 +114,10 @@ export const api = {
       req<ContainerDef>(`/api/container-defs/${id}`, json('PATCH', patch)),
     setDefault: (id: string) =>
       req<{ ok: boolean }>(`/api/container-defs/${id}/default`, { method: 'PUT' }),
+    build: (id: string) =>
+      req<{ ok: boolean; method: string; output: string }>(`/api/container-defs/${id}/build`, {
+        method: 'POST',
+      }),
     remove: (id: string) => req<void>(`/api/container-defs/${id}`, { method: 'DELETE' }),
   },
   settings: {

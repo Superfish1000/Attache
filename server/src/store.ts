@@ -114,6 +114,7 @@ function load(): { db: DB; migrated: boolean } {
       mcpTokenEnvKey:
         c.mcpTokenEnvKey ?? (c.name === 'Hermes' ? HERMES_MCP_TOKEN_ENV_KEY : ''),
       mcpLoginCommand: c.mcpLoginCommand ?? '',
+      dockerfile: c.dockerfile ?? '',
     }),
   )
   let defaultContainerId: string = rd.defaultContainerId ?? ''
@@ -132,6 +133,7 @@ function load(): { db: DB; migrated: boolean } {
       mcpProvisionCommand: HERMES_MCP_PROVISION,
       mcpTokenEnvKey: HERMES_MCP_TOKEN_ENV_KEY,
       mcpLoginCommand: '',
+      dockerfile: '',
       createdAt: new Date().toISOString(),
     }
     containers = [def]
