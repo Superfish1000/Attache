@@ -4,6 +4,7 @@ import fastifyStatic from '@fastify/static'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { db } from './store.js'
+import { scheduleMountGroupFix } from './docker.js'
 import { SESSION_COOKIE, getSessionUser } from './auth.js'
 import authRoutes from './routes/auth.js'
 import userRoutes from './routes/users.js'
@@ -57,3 +58,8 @@ if (existsSync(webDist)) {
 const port = Number(process.env.ATTACHE_API_PORT ?? db.settings.server.port)
 const host = process.env.ATTACHE_API_HOST ?? db.settings.server.host
 await app.listen({ port, host })
+
+// containers that were already running before this server started never see a
+// start event — schedule the host-access group fix for them too (Linux only;
+// harmless no-op for stopped containers)
+for (const agent of db.agents) scheduleMountGroupFix(agent)
