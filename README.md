@@ -38,7 +38,7 @@ npm run dev
 
 ### First run
 
-1. Open the GUI — you'll get a **create the first admin** screen. That account is yours; there are no default credentials.
+1. Open the GUI — you'll get a **create the first admin** screen. That account is yours; there are no default credentials. (Prefer the command line, or need to script it? `npm run create-admin -- you@example.com yourpassword "Your Name"` does the same thing — see *Account recovery* below.)
 2. Go to **Settings → Docker** and set **Default env for all agents** to include your model API key, e.g. `{"ANTHROPIC_API_KEY": "sk-ant-…"}` (the ⓘ popup next to env fields documents all recognized variables). Agents cannot think without a provider key.
 3. Check the **Containers** page — a **Hermes** definition ships by default (`nousresearch/hermes-agent:latest`, data mounted at `/opt/data`, gateway port 8642 + dashboard port 9119 auto-mapped).
 4. Create a user on the **Users** page (with a password if they should log in), then click **New agent** on their row.
@@ -96,6 +96,16 @@ Sync users from an Entra (Azure AD) group:
 - **Server** — API bind host/port (restart required), data-dir display.
 - **Docker** — universal daemon config: socket/pipe path, auto-pull, host-port range start, restart policy, security options, and the shared **default env** merged into every container (settings → definition → agent, later wins).
 - **Security** — session lifetime. Passwords are scrypt hashes; sessions persist across server restarts.
+
+## Account recovery / CLI account creation
+
+Locked out, or provisioning from a script? With the server **stopped** (it holds the store in memory and would overwrite the change):
+
+```bash
+npm run create-admin -- admin@example.com a-strong-password "Display Name"
+```
+
+Creates the account as an admin, or — if the email already exists — promotes it to admin and resets its password. Both the Attaché password hash and the agent-dashboard hash are set, so owned agents' Hermes dashboards accept the new password after their next restart. Start the server again and sign in.
 
 ## Troubleshooting
 
