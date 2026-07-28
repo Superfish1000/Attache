@@ -1,46 +1,131 @@
-# Attache
+# Attaché
 
-Web GUI for spinning up containers with AI agents in them. Manage users, their
-agents (soul files + config), sync users from an Office 365 group, and — later —
-serve a shared tool library over MCP.
+A self-hosted web GUI for running **containerized AI agents** — one container per person. Attaché manages the users, the agents' personality files, the Docker lifecycle, and a built-in chat, with [Hermes Agent](https://hermes-agent.nousresearch.com) (Nous Research) as the default runtime. Users can be synced automatically from an Office 365 group, each receiving their own agent.
 
-## Run
+## Features
+
+- **Users & roles** — admin and standard accounts, scrypt-hashed passwords, cookie sessions. Standard users see only their own agents; admins manage everything.
+- **Container definitions** — reusable setups (image, command, mount, ports, env, resource limits) plus a per-definition list of *behavior files* with creation templates. Agents are created from a definition and stay individually tweakable.
+- **Agent management** — start/stop/regenerate containers, live logs, editable soul/memory/config files, per-agent cron jobs, auto-assigned host ports.
+- **Chat** — streaming chat with any agent you own, proxied through the agent's warm OpenAI-compatible gateway (no cold start per message).
+- **Hermes dashboard** — one-click access to each agent's own web dashboard, automatically secured with the owner's Attaché login (hash-only provisioning — no plaintext at rest).
+- **Office 365 sync** — pull members of an Entra group; new members get a user + agent automatically.
+- **MCP tool library** — stub today; planned shared tool server for all agents.
+
+## Stack
+
+npm-workspaces monorepo: `server/` (Fastify + TypeScript, run by tsx) and `web/` (Vite + React + TypeScript). State lives in a JSON file store (`data/db.json`) plus per-agent data dirs (`data/agents/<id>/`) that are bind-mounted into containers. No database server required.
+
+## Requirements
+
+- **Node.js 20+** (developed on Node 25) and npm
+- **Docker** with the daemon running (Docker Desktop on Windows). The GUI works without Docker, but container features report "docker offline" until the daemon is up.
+- Windows, macOS, or Linux. Developed on Windows 10; dockerode talks to the daemon via the platform default (named pipe / unix socket), overridable in Settings.
+
+## Setup
 
 ```bash
+git clone https://github.com/Superfish1000/Attache.git
+cd Attache
 npm install
 npm run dev
 ```
 
-- GUI: http://localhost:7700
-- API: http://localhost:7701 (proxied at `/api` in dev)
+- GUI: **http://localhost:7700**  ·  API: http://localhost:7701 (proxied at `/api` in dev)
+- Production-ish: `npm run build` then `npm start` — the API server serves the built GUI itself.
 
-(Ports chosen to dodge Windows excluded port ranges — 5173/4517 are blocked on this box.)
+> Ports 7700/7701 were chosen because Windows excluded-port ranges commonly swallow 5173/4517. Override with `ATTACHE_API_PORT` / `ATTACHE_API_HOST` env vars or Settings → Server (restart required). The data location is overridable with `ATTACHE_DATA_DIR` (default: `./data`, gitignored).
 
-Production-ish: `npm run build` then `npm start` — the API server serves the
-built GUI from `web/dist`.
+### First run
 
-## Layout
+1. Open the GUI — you'll get a **create the first admin** screen. That account is yours; there are no default credentials.
+2. Go to **Settings → Docker** and set **Default env for all agents** to include your model API key, e.g. `{"ANTHROPIC_API_KEY": "sk-ant-…"}` (the ⓘ popup next to env fields documents all recognized variables). Agents cannot think without a provider key.
+3. Check the **Containers** page — a **Hermes** definition ships by default (`nousresearch/hermes-agent:latest`, data mounted at `/opt/data`, gateway port 8642 + dashboard port 9119 auto-mapped).
+4. Create a user on the **Users** page (with a password if they should log in), then click **New agent** on their row.
+5. On the agent page press **Start** — the first start pulls the image (~2 GB, one time). Then chat away.
+
+### Old Docker daemons (pre-20.10.10)
+
+Modern images (glibc 2.34+) need the `clone3` syscall, which old daemons' seccomp profiles block — Python inside the container fails with `can't start new thread`. Workaround until you upgrade Docker: **Settings → Docker → Security options** = `seccomp=unconfined`. Remove it after upgrading.
+
+## Using the application
+
+### Users (admin)
+
+Create accounts with a role and optional password; accounts without a password can't sign in (typical for O365-synced users until you set one). Per-row actions: change role, set password, create an agent (the dropdown above the table picks which container definition new agents use), delete (cascades to their agents). Lockout guards prevent deleting yourself or demoting/deleting the last admin.
+
+### Containers (admin)
+
+Container definitions are the blueprints agents are stamped from:
+
+- **Runtime**: image, command, data mount path, auto-mapped container ports, memory/CPU limits, definition-level env (applied to containers at start; per-agent env wins).
+- **Behavior files**: the file list every agent of this definition exposes as editors on its page — key, label, path (relative to the agent's data dir), hint, and an optional **template** written at agent creation. Templates substitute `{{AGENT_NAME}}` and `{{OWNER_NAME}}`.
+- One definition is the **default** for new agents; agents can be switched between definitions later (their file list follows).
+
+The stock Hermes definition exposes: Soul (`SOUL.md`), Memory (`memories/MEMORY.md`), User profile (`memories/USER.md`), Agents (`AGENTS.md`), Tools (`TOOLS.md`), Context (`.hermes.md`).
+
+### Agents
+
+Each agent owns a data dir (`data/agents/<id>/`) mounted into its container — souls and memories edited in the GUI are the same files the agent reads and writes. The agent page has:
+
+- **Container panel** — status, port mappings, Start / Stop / **Regenerate** (remove + recreate + start in one step, so env/port/definition changes apply; files are untouched unless you tick *reset files from templates*), log viewer, **Open dashboard**.
+- **Configuration** — definition switcher and per-agent overrides: image, command, env (JSON), mount path, port mappings, memory/CPU limits. Admin-only; owners can view.
+- **Files** — expandable editors for the definition's behavior files (owners can edit their own agent's files).
+- **Cron jobs** — dropdown editor for scheduled-job files under `cron/`.
+
+Host ports are auto-assigned per agent from a configurable range (default 18000+). Definition-declared ports missing from an agent are added automatically at every start/regenerate.
+
+### Chat
+
+Pick an agent and talk. Messages stream through the agent's OpenAI-compatible gateway — a warm, always-loaded process, so replies take seconds, not minutes. History is kept per agent in your browser. **Timing note:** after a container starts, the gateway needs ~2–4 minutes to come up; a "gateway unreachable" error right after boot just means wait.
+
+### Hermes dashboard
+
+Every Hermes agent also serves its own full-featured web dashboard (port 9119, auto-mapped). Click **Open dashboard ↗** on the agent page or chat header and sign in with the **owner's Attaché email and password**. Provisioning is automatic and hash-only: whenever a password is set or changed in Attaché, a Hermes-format scrypt hash (never the plaintext) is written into each owned agent's `.env`, and running dashboards restart to pick it up. The dashboard takes up to ~4 minutes after container start.
+
+### Integrations — Office 365 (admin)
+
+Sync users from an Entra (Azure AD) group:
+
+1. Create an app registration with **application** permissions `GroupMember.Read.All` + `User.Read.All` (admin-consented), client-credentials flow.
+2. Enter tenant ID, client ID, client secret, and the group's object ID on the Integrations page.
+3. **Preview members** to sanity-check, then **Sync now** — each new member gets a user (no password, `o365` source) and a default agent. Re-syncs are idempotent.
+
+### Settings (admin)
+
+- **Server** — API bind host/port (restart required), data-dir display.
+- **Docker** — universal daemon config: socket/pipe path, auto-pull, host-port range start, restart policy, security options, and the shared **default env** merged into every container (settings → definition → agent, later wins).
+- **Security** — session lifetime. Passwords are scrypt hashes; sessions persist across server restarts.
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| "gateway unreachable" in Chat right after starting a container | Gateway boots in ~2–4 min. Wait, then retry. |
+| Dashboard button 404s / connection refused | Dashboard takes up to ~4 min after container start. Also requires the owner to have an Attaché password. |
+| `can't start new thread` in agent logs; chat/dashboard never come up | Old Docker daemon seccomp vs `clone3` — see *Old Docker daemons* above. |
+| Container features all say "docker offline" | Start Docker Desktop / the daemon. The GUI degrades gracefully meanwhile. |
+| GUI dev server won't bind | Windows excluded-port ranges — `netsh interface ipv4 show excludedportrange protocol=tcp`, then change ports in `.claude/launch.json` / vite config. |
+| Slow replies despite warm gateway | The model does the thinking — switch the agent's model (e.g. `hermes config set model.default anthropic/claude-sonnet-5` inside the container) for faster turnaround. |
+
+## Security notes
+
+- `data/` is gitignored and holds everything sensitive: user records (hashes only), sessions, agent souls/memories, and the definition env (which contains your model API key). Don't commit it.
+- Dashboard credentials are provisioned as hashes; plaintext passwords exist only in transit during login/set-password requests.
+- Attaché binds `127.0.0.1` by default. If you expose it on a LAN, put TLS and real network controls in front of it first.
+
+## Roadmap
+
+- Shared tool library served over MCP (currently a stub at `/api/mcp/status` and the Tools page)
+- SQLite store swap (interface already isolated in `server/src/store.ts`)
+- Run-as-a-service install (survive reboots without a dev session)
+- Per-user dashboard OAuth instead of basic auth
+
+## Repo layout
 
 | Path | What |
 |------|------|
-| `server/` | Fastify API — users, agents, containers (dockerode), O365 sync, MCP stub |
+| `server/` | Fastify API — auth, users, agents, container defs, docker, chat proxy, O365, MCP stub |
 | `web/` | Vite + React GUI |
-| `data/` | Runtime state (gitignored): `db.json` + `agents/{id}/SOUL.md` |
+| `data/` | Runtime state (gitignored): `db.json` + `agents/<id>/` data dirs |
 | `docs/superpowers/specs/` | Design docs |
-
-## Agent runtime: Hermes
-
-Default agent image is [Hermes Agent](https://hermes-agent.nousresearch.com) (`nousresearch/hermes-agent:latest`, command `gateway run`). Attache mounts each agent's data dir at `/opt/data` — Hermes keeps `SOUL.md`, `.env`, `config.yaml`, `sessions/`, `memories/`, `skills/` there, so the soul you edit in the GUI is the one Hermes loads.
-
-Container setups live under **Containers** as reusable definitions: image/command/mount/ports/limits/env plus the behavior-file list (with creation templates). Ports declared on a definition auto-map to free host ports (default range 18000+) at every deploy — no manual port bookkeeping. Env layers: Settings default env → definition env → per-agent env.
-
-Put shared model credentials (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) in **Settings → Docker → Default env**, then press **Regenerate** on each agent (recreates the container so env/port/definition changes apply; behavior files are untouched unless you tick *reset files from templates*). The ⓘ next to every env editor documents the variables.
-
-The **Chat** tab talks to any agent you own by running the Hermes CLI inside its container (`hermes chat -q -Q`) — this image ships no HTTP inference endpoint despite what its docs suggest. Conversation context lives in a per-user Hermes session inside the agent's data dir; expect ~1–3 min per reply with the default Opus model. Old Docker daemons (20.10.x) need `seccomp=unconfined` in **Settings → Docker → Security options** or the agent can't spawn threads (`clone3` blocked by the old seccomp profile — upgrade Docker Desktop to drop the workaround).
-
-## Notes
-
-- Docker daemon optional — container features report unavailable instead of failing.
-- Per-agent image/command/env/mount/ports/limits overridable in the GUI (Agent detail page).
-- O365 sync needs an Entra app registration (client-credentials) — tenant ID, client ID, secret, group ID entered on the Integrations page. Requires `GroupMember.Read.All` + `User.Read.All` application permissions.
-- MCP tool library is a stub (`/api/mcp/status`).
