@@ -28,6 +28,13 @@ function forgotAllowedFor(email: string): boolean {
   const now = Date.now()
   if (forgotHits.size > 1000) {
     for (const [k, v] of forgotHits) if (v.resetAt < now) forgotHits.delete(k)
+    // still over cap (attacker-chosen keys within one window): drop oldest
+    // entries. Limiting degrades only while actively under attack — memory
+    // stays bounded.
+    for (const k of forgotHits.keys()) {
+      if (forgotHits.size <= 1000) break
+      forgotHits.delete(k)
+    }
   }
   const hit = forgotHits.get(email)
   if (!hit || hit.resetAt < now) {
@@ -113,12 +120,12 @@ export default async function authRoutes(app: FastifyInstance) {
 
   /**
    * Unauthenticated. The body is identical for all outcomes (unknown email,
-   * disabled account, rate-limited, send failure) and the email send is
-   * fire-and-forget so response timing leaks nothing about account existence.
+   * disabled account, rate-limited, send failure) and no SMTP round-trip or
+   * token work happens in the response path.
    */
   app.post('/forgot', async (req, reply) => {
     const { email } = (req.body ?? {}) as { email?: unknown }
-    if (typeof email !== 'string' || !email.trim()) {
+    if (typeof email !== 'string' || !email.trim() || email.trim().length > 254) {
       return reply.code(400).send({ error: 'email required' })
     }
     const generic = { ok: true }
@@ -129,9 +136,11 @@ export default async function authRoutes(app: FastifyInstance) {
     }
     const user = db.users.find((u) => u.email.toLowerCase() === key)
     if (!user || user.disabled) return generic
-    void sendSetPasswordEmail(user, 'reset').catch((err) =>
-      req.log.warn({ err }, 'forgot-password email failed'),
-    )
+    setImmediate(() => {
+      void sendSetPasswordEmail(user, 'reset').catch((err) =>
+        req.log.warn({ err }, 'forgot-password email failed'),
+      )
+    })
     return generic
   })
 
