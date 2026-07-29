@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { db } from './store.js'
 import { scheduleMountGroupFix } from './docker.js'
+import { startScheduler } from './scheduler.js'
 import { SESSION_COOKIE, getSessionUser } from './auth.js'
 import authRoutes from './routes/auth.js'
 import userRoutes from './routes/users.js'
@@ -63,3 +64,5 @@ await app.listen({ port, host })
 // start event — schedule the host-access group fix for them too (Linux only;
 // harmless no-op for stopped containers)
 for (const agent of db.agents) scheduleMountGroupFix(agent)
+
+startScheduler()
