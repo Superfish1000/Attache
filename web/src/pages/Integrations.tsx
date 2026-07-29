@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { Chip, ErrorBanner, fmtDate } from '../components'
-import type { O365Member, O365SettingsView, SyncResult } from '../types'
+import type { O365Member, O365SettingsView, SyncRun } from '../types'
 
 export default function Integrations() {
   const [view, setView] = useState<O365SettingsView | null>(null)
@@ -10,7 +10,7 @@ export default function Integrations() {
   const [clientSecret, setClientSecret] = useState('')
   const [groupId, setGroupId] = useState('')
   const [members, setMembers] = useState<O365Member[] | null>(null)
-  const [syncResult, setSyncResult] = useState<SyncResult | null>(null)
+  const [syncResult, setSyncResult] = useState<SyncRun | null>(null)
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -122,8 +122,8 @@ export default function Integrations() {
         <p className="muted">Last sync: {fmtDate(view?.lastSync)}</p>
         {syncResult && (
           <p>
-            Sync complete: {syncResult.total} member(s), <b>{syncResult.created} created</b>,{' '}
-            {syncResult.skipped} already present.
+            Sync: {syncResult.created} created, {syncResult.disabled} disabled,{' '}
+            {syncResult.reenabled} re-enabled.
           </p>
         )}
       </div>

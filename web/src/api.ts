@@ -14,7 +14,7 @@ import type {
   Role,
   SettingsView,
   StatusResponse,
-  SyncResult,
+  SyncRun,
   UpdateCheck,
   UpdateResult,
   User,
@@ -111,7 +111,7 @@ export const api = {
     saveSettings: (s: { tenantId: string; clientId: string; clientSecret: string; groupId: string }) =>
       req<O365SettingsView>('/api/o365/settings', json('PUT', s)),
     preview: () => req<O365Member[]>('/api/o365/preview'),
-    sync: () => req<SyncResult>('/api/o365/sync', { method: 'POST' }),
+    sync: () => req<SyncRun>('/api/o365/sync', { method: 'POST' }),
   },
   containerDefs: {
     list: () => req<{ defs: ContainerDef[]; defaultId: string }>('/api/container-defs'),

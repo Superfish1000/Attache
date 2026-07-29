@@ -10,6 +10,7 @@ export interface User {
   source: 'manual' | 'o365'
   o365Id?: string
   hasPassword: boolean
+  disabled?: boolean
   createdAt: string
 }
 
@@ -122,6 +123,8 @@ export interface O365SettingsView {
   hasSecret: boolean
   configured: boolean
   lastSync: string | null
+  pollMinutes: number
+  lastRuns: SyncRun[]
 }
 
 export interface O365Member {
@@ -130,10 +133,15 @@ export interface O365Member {
   email: string
 }
 
-export interface SyncResult {
+export interface SyncRun {
+  at: string
   total: number
   created: number
-  skipped: number
+  disabled: number
+  reenabled: number
+  skippedAdmins: number
+  emailFailures: number
+  error?: string
 }
 
 export interface McpStatus {
@@ -144,7 +152,8 @@ export interface McpStatus {
 }
 
 export interface SettingsView {
-  server: { host: string; port: number }
+  server: { host: string; port: number; publicBaseUrl: string }
+  email: { host: string; port: number; secure: boolean; user: string; from: string; hasPass: boolean }
   docker: {
     socketPath: string
     autoPull: boolean

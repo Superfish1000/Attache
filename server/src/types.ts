@@ -5,6 +5,8 @@ export interface User {
   name: string
   email: string
   role: Role
+  /** Set by the O365 poller (left the group) or an admin. Login rejected while true. */
+  disabled?: boolean
   source: 'manual' | 'o365'
   o365Id?: string
   /** scrypt hash — absent means the account cannot log in yet */
@@ -130,11 +132,17 @@ export interface O365Settings {
   clientId: string
   clientSecret: string
   groupId: string
+  /** Poll interval in minutes; 0 = polling off. */
+  pollMinutes: number
+  /** Last 10 sync runs, newest first. */
+  lastRuns: SyncRun[]
 }
 
 export interface ServerSettings {
   host: string
   port: number
+  /** Address users reach the GUI at (e.g. http://192.168.1.50:7700) — emailed links are built from it. */
+  publicBaseUrl: string
 }
 
 /** Universal docker configuration — daemon-level details shared by every container. */
@@ -161,10 +169,40 @@ export interface SecuritySettings {
   sessionTtlHours: number
 }
 
+export interface EmailSettings {
+  host: string
+  port: number
+  secure: boolean
+  user: string
+  pass: string
+  from: string
+}
+
+export interface SyncRun {
+  at: string
+  total: number
+  created: number
+  disabled: number
+  reenabled: number
+  skippedAdmins: number
+  emailFailures: number
+  error?: string
+}
+
+export interface ResetToken {
+  /** sha256 hex of the raw token — the raw value only ever exists in the emailed link. */
+  tokenHash: string
+  userId: string
+  createdAt: string
+  expiresAt: string
+  usedAt?: string
+}
+
 export interface Settings {
   o365: O365Settings
   server: ServerSettings
   docker: DockerSettings
   security: SecuritySettings
+  email: EmailSettings
   lastO365Sync: string | null
 }

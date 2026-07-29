@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import type { Agent, ContainerDef, McpServerDef, Session, Settings, User } from './types.js'
+import type { Agent, ContainerDef, McpServerDef, ResetToken, Session, Settings, User } from './types.js'
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 export const DATA_DIR = process.env.ATTACHE_DATA_DIR ?? join(ROOT, 'data')
@@ -15,6 +15,7 @@ interface DB {
   containers: ContainerDef[]
   sessions: Session[]
   settings: Settings
+  resetTokens: ResetToken[]
 }
 
 const SOUL_TEMPLATE = `# {{AGENT_NAME}}
@@ -70,9 +71,10 @@ const defaults = (): DB => ({
   agents: [],
   containers: [],
   sessions: [],
+  resetTokens: [],
   settings: {
-    o365: { tenantId: '', clientId: '', clientSecret: '', groupId: '' },
-    server: { host: '127.0.0.1', port: 7701 },
+    o365: { tenantId: '', clientId: '', clientSecret: '', groupId: '', pollMinutes: 0, lastRuns: [] },
+    server: { host: '127.0.0.1', port: 7701, publicBaseUrl: '' },
     docker: {
       socketPath: '',
       autoPull: true,
@@ -83,6 +85,7 @@ const defaults = (): DB => ({
       defaultContainerId: '',
     },
     security: { sessionTtlHours: 72 },
+    email: { host: '', port: 587, secure: false, user: '', pass: '', from: '' },
     lastO365Sync: null,
   },
 })
@@ -144,11 +147,14 @@ function load(): { db: DB; migrated: boolean } {
   if (!defaultContainerId && containers[0]) defaultContainerId = containers[0].id
 
   const db: DB = {
-    // role backfill for records written before auth existed
-    users: (raw.users ?? []).map((u: Omit<User, 'role'> & { role?: User['role'] }) => ({
-      ...u,
-      role: u.role ?? 'standard',
-    })),
+    // role/disabled backfill for records written before auth/O365-polling existed
+    users: (raw.users ?? []).map(
+      (u: Omit<User, 'role' | 'disabled'> & { role?: User['role']; disabled?: boolean }) => ({
+        ...u,
+        role: u.role ?? 'standard',
+        disabled: u.disabled ?? false,
+      }),
+    ),
     // config + containerId backfill for agents created before container definitions
     agents: (raw.agents ?? []).map(
       (a: Omit<Agent, 'config' | 'containerId'> & {
@@ -166,6 +172,10 @@ function load(): { db: DB; migrated: boolean } {
     ),
     containers,
     sessions: raw.sessions ?? [],
+    // prune dead reset tokens at boot
+    resetTokens: ((raw.resetTokens ?? []) as ResetToken[]).filter(
+      (t) => !t.usedAt && Date.parse(t.expiresAt) > Date.now(),
+    ),
     settings: {
       ...d.settings,
       o365: { ...d.settings.o365, ...(raw.settings?.o365 ?? {}) },
@@ -180,6 +190,7 @@ function load(): { db: DB; migrated: boolean } {
         defaultContainerId,
       },
       security: { ...d.settings.security, ...(raw.settings?.security ?? {}) },
+      email: { ...d.settings.email, ...(raw.settings?.email ?? {}) },
       lastO365Sync: raw.settings?.lastO365Sync ?? null,
     },
   }
