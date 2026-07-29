@@ -11,6 +11,8 @@ export default function Integrations() {
   const [clientSecret, setClientSecret] = useState('')
   const [groupId, setGroupId] = useState('')
   const [pollMinutes, setPollMinutes] = useState('0')
+  const [createAgents, setCreateAgents] = useState(true)
+  const [sendWelcomeEmails, setSendWelcomeEmails] = useState(true)
   const [members, setMembers] = useState<O365Member[] | null>(null)
   const [testResult, setTestResult] = useState<{ groupName: string; memberCount: number } | null>(null)
   const [syncResult, setSyncResult] = useState<SyncRun | null>(null)
@@ -27,6 +29,8 @@ export default function Integrations() {
         setClientId(o.clientId)
         setGroupId(o.groupId)
         setPollMinutes(String(o.pollMinutes))
+        setCreateAgents(o.createAgents)
+        setSendWelcomeEmails(o.sendWelcomeEmails)
       })
       .catch((e: Error) => setErr(e.message))
   }, [])
@@ -42,6 +46,8 @@ export default function Integrations() {
         clientSecret,
         groupId,
         pollMinutes: Number(pollMinutes) || 0,
+        createAgents,
+        sendWelcomeEmails,
       })
       setView(s)
       setClientSecret('')
@@ -193,11 +199,9 @@ export default function Integrations() {
 
       <h2>3 · Polling</h2>
       <div className="panel">
-        <div className="form-row">
-          <div className="field">
-            <label>Poll interval, minutes (0 = off)</label>
-            <input value={pollMinutes} onChange={(e) => setPollMinutes(e.target.value)} />
-          </div>
+        <div className="field">
+          <label>Poll interval, minutes (0 = off)</label>
+          <input value={pollMinutes} onChange={(e) => setPollMinutes(e.target.value)} />
         </div>
         <div className="btn-row">
           <button className="btn btn-primary" disabled={busy} onClick={saveSettings}>
@@ -251,20 +255,46 @@ export default function Integrations() {
         )}
       </div>
 
-      <h2>4 · Email readiness</h2>
+      <h2>4 · New member actions</h2>
       <div className="panel">
-        {emailReady ? (
-          <p className="ok-note" style={{ margin: 0 }}>
-            SMTP is configured — new users receive set-password links automatically.
-          </p>
+        <p className="muted" style={{ marginTop: 0 }}>
+          When the poller finds a new group member it always creates their user account. Choose what
+          else happens:
+        </p>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={createAgents}
+            onChange={(e) => setCreateAgents(e.target.checked)}
+          />
+          <span>Create an agent for each new user</span>
+        </label>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={sendWelcomeEmails}
+            onChange={(e) => setSendWelcomeEmails(e.target.checked)}
+          />
+          <span>Email a set-password link</span>
+        </label>
+        {sendWelcomeEmails ? (
+          emailReady ? (
+            <p className="ok-note" style={{ marginBottom: 0 }}>
+              SMTP is configured — links go out automatically.
+            </p>
+          ) : (
+            <p style={{ marginBottom: 0 }}>
+              <Chip tone="warn">not configured</Chip> SMTP isn't configured — new users will be
+              created without a password until you set it up under Settings → Email.
+            </p>
+          )
         ) : (
-          <p style={{ margin: 0 }}>
-            <Chip tone="warn">not configured</Chip> New users will be created without a password and
-            can't sign in until you email them a link or set one manually. Configure SMTP under
-            Settings → Email.
+          <p className="muted" style={{ marginBottom: 0 }}>
+            Welcome emails are off — email links manually from the Users page.
           </p>
         )}
       </div>
+      <p className="muted">These options save with the Save settings button in step 3.</p>
     </>
   )
 }

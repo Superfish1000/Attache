@@ -13,6 +13,8 @@ function maskedSettings() {
     configured: o365Configured(),
     lastSync: db.settings.lastO365Sync,
     pollMinutes: s.pollMinutes,
+    createAgents: s.createAgents,
+    sendWelcomeEmails: s.sendWelcomeEmails,
     lastRuns: s.lastRuns,
   }
 }
@@ -31,6 +33,8 @@ export default async function o365Routes(app: FastifyInstance) {
       clientSecret: string
       groupId: string
       pollMinutes: number
+      createAgents: boolean
+      sendWelcomeEmails: boolean
     }>
     const s = db.settings.o365
     if (body.pollMinutes !== undefined) {
@@ -43,6 +47,8 @@ export default async function o365Routes(app: FastifyInstance) {
     if (body.tenantId !== undefined) s.tenantId = body.tenantId.trim()
     if (body.clientId !== undefined) s.clientId = body.clientId.trim()
     if (body.groupId !== undefined) s.groupId = body.groupId.trim()
+    if (typeof body.createAgents === 'boolean') s.createAgents = body.createAgents
+    if (typeof body.sendWelcomeEmails === 'boolean') s.sendWelcomeEmails = body.sendWelcomeEmails
     // empty secret in the payload means "keep the existing one"
     if (body.clientSecret) s.clientSecret = body.clientSecret
     save()

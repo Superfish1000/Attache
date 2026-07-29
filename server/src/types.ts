@@ -134,6 +134,10 @@ export interface O365Settings {
   groupId: string
   /** Poll interval in minutes; 0 = polling off. */
   pollMinutes: number
+  /** Create an agent for each newly synced user. */
+  createAgents: boolean
+  /** Email each newly synced user a set-password link (requires SMTP + public URL). */
+  sendWelcomeEmails: boolean
   /** Last 10 sync runs, newest first. */
   lastRuns: SyncRun[]
 }

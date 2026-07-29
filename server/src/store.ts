@@ -73,7 +73,16 @@ const defaults = (): DB => ({
   sessions: [],
   resetTokens: [],
   settings: {
-    o365: { tenantId: '', clientId: '', clientSecret: '', groupId: '', pollMinutes: 0, lastRuns: [] },
+    o365: {
+      tenantId: '',
+      clientId: '',
+      clientSecret: '',
+      groupId: '',
+      pollMinutes: 0,
+      createAgents: true,
+      sendWelcomeEmails: true,
+      lastRuns: [],
+    },
     server: { host: '127.0.0.1', port: 7701, publicBaseUrl: '' },
     docker: {
       socketPath: '',
