@@ -18,3 +18,7 @@ FROM nousresearch/hermes-agent:latest
 
 # Pinned per deployment guide; node/npm ship with the hermes image.
 RUN npm install -g @softeria/ms-365-mcp-server@0.134.4
+
+# Teams Developer CLI (optional integration) — its token cache lands under
+# HOME/.config/teams-cli, i.e. the agent's mounted data dir at runtime.
+RUN npm install -g @microsoft/teams.cli@preview

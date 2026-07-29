@@ -87,6 +87,22 @@ The root-run `mkdir`/`chown` prelude matters on Linux hosts: Attaché's execs (a
 
 Each agent then gets an M365 integration that can only act as its owner; the owner clicks **MCP sign-in** once, enters the device code at Microsoft, and the token persists in their agent's data dir across regenerates. Existing agents need their config image updated (Agent page → Configuration) plus a Regenerate.
 
+#### Adding the Teams Developer CLI (optional)
+
+Add one line to the definition's Dockerfile and rebuild:
+
+```
+RUN npm install -g @microsoft/teams.cli@preview
+```
+
+A true single sign-on covering both tools isn't possible — the MCP server and the Teams CLI are **separate Azure app registrations** (each has its own client ID, token cache, and consent), and Microsoft doesn't let one app redeem another's tokens. The next best thing works well: a combined sign-in command that runs both device-code flows **in succession** with the same Microsoft account:
+
+```
+mkdir -p /opt/data/m365/logs /opt/data/.ms-365-mcp-server /opt/data/.config && chown -R hermes /opt/data/m365 /opt/data/.ms-365-mcp-server /opt/data/.config 2>/dev/null; runuser -u hermes -- env HOME=/opt/data MS365_MCP_ORG_MODE=true MS365_MCP_EXPECTED_USERNAME={{OWNER_EMAIL}} MS365_MCP_TOKEN_CACHE_PATH=/opt/data/m365/token-cache.json MS365_MCP_SELECTED_ACCOUNT_PATH=/opt/data/m365/selected-account.json MS365_MCP_LOG_DIR=/opt/data/m365/logs ms-365-mcp-server --login --org-mode > {{LOG}} 2>&1; echo "--- Microsoft 365 sign-in finished. Teams CLI sign-in starting — press Sign-in status for the second code ---" >> {{LOG}}; runuser -u hermes -- env HOME=/opt/data TEAMS_NO_INTERACTIVE=1 teams login --device-code -y --disable-auto-update >> {{LOG}} 2>&1
+```
+
+Flow for the owner: press **MCP sign-in** → complete the first device code (Microsoft 365) → press **Sign-in status** → the Teams CLI's second code appears → complete it. Both token caches live in the agent's data dir (`m365/` and `.config/teams-cli/` — the CLI resolves its config under `HOME`), so they survive regenerates. `TEAMS_NO_INTERACTIVE=1` and `-y` keep the CLI from waiting on prompts that can't be answered in a detached shell.
+
 - One definition is the **default** for new agents; agents can be switched between definitions later (their file list follows).
 
 The stock Hermes definition exposes: Soul (`SOUL.md`), Memory (`memories/MEMORY.md`), User profile (`memories/USER.md`), Agents (`AGENTS.md`), Tools (`TOOLS.md`), Context (`.hermes.md`).

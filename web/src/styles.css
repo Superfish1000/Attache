@@ -179,12 +179,14 @@ tr:last-child td {
   border-bottom: none;
 }
 
-td a {
+td a,
+.panel a {
   color: var(--accent);
   text-decoration: none;
 }
 
-td a:hover {
+td a:hover,
+.panel a:hover {
   text-decoration: underline;
 }
 

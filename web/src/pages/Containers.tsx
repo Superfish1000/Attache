@@ -468,11 +468,11 @@ export default function Containers() {
                   <label>
                     {'Extra args ({{OWNER_EMAIL}}/{{OWNER_NAME}}/{{TOKEN}} substituted per agent)'}
                   </label>
-                  <input
+                  <textarea
+                    rows={3}
                     value={s.extraArgs}
                     onChange={(e) => updMcp(i, { extraArgs: e.target.value })}
                     placeholder="--env KEY={{OWNER_EMAIL}} KEY2=val --args --flag"
-                    style={{ width: '100%' }}
                   />
                 </div>
               </div>
