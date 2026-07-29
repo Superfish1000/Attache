@@ -1,7 +1,13 @@
 import { db, newId, save } from './store.js'
 import type { Role, User } from './types.js'
 import { deleteAgent } from './agents.js'
-import { bounceDashboard, removeAgentContainer, writeDashboardCredsSafe } from './docker.js'
+import {
+  bounceDashboard,
+  removeAgentContainer,
+  startAgentContainer,
+  stopAgentContainer,
+  writeDashboardCredsSafe,
+} from './docker.js'
 import { destroyUserSessions, hashPassword, hermesHashPassword } from './auth.js'
 
 /**
@@ -42,6 +48,21 @@ export function createUser(input: {
   db.users.push(user)
   save()
   return user
+}
+
+/** Disables or re-enables sign-in; stops/starts the user's agent containers best-effort. */
+export async function setUserDisabled(user: User, disabled: boolean): Promise<void> {
+  user.disabled = disabled
+  save()
+  if (disabled) destroyUserSessions(user.id)
+  for (const agent of db.agents.filter((a) => a.userId === user.id)) {
+    try {
+      if (disabled) await stopAgentContainer(agent.id)
+      else await startAgentContainer(agent)
+    } catch {
+      // docker unavailable — the flag change still applies
+    }
+  }
 }
 
 /** Deletes the user and cascades to their agents (containers removed best-effort) and sessions. */

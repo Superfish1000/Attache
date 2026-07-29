@@ -3,8 +3,10 @@ import { db, save } from '../store.js'
 import { createUser, syncOwnerDashboards } from '../users.js'
 import {
   SESSION_COOKIE,
+  consumeResetToken,
   createSession,
   destroySession,
+  destroyUserSessions,
   getSessionUser,
   hashPassword,
   hermesHashPassword,
@@ -12,9 +14,23 @@ import {
   safeUser,
   verifyPassword,
 } from '../auth.js'
+import { sendSetPasswordEmail } from '../mailer.js'
 
 function cookieOpts(maxAgeSeconds: number) {
   return { path: '/', httpOnly: true, sameSite: 'lax' as const, maxAge: maxAgeSeconds }
+}
+
+// naive per-IP limiter for the unauthenticated forgot endpoint
+const forgotHits = new Map<string, { count: number; resetAt: number }>()
+function forgotAllowed(ip: string): boolean {
+  const now = Date.now()
+  const hit = forgotHits.get(ip)
+  if (!hit || hit.resetAt < now) {
+    forgotHits.set(ip, { count: 1, resetAt: now + 3600_000 })
+    return true
+  }
+  hit.count++
+  return hit.count <= 5
 }
 
 export default async function authRoutes(app: FastifyInstance) {
@@ -68,6 +84,9 @@ export default async function authRoutes(app: FastifyInstance) {
     if (!user?.passwordHash || !verifyPassword(password, user.passwordHash)) {
       return reply.code(401).send({ error: 'invalid email or password' })
     }
+    if (user.disabled) {
+      return reply.code(403).send({ error: 'account disabled — contact an administrator' })
+    }
     // opportunistic backfill: accounts whose password predates dashboard
     // provisioning get their agents' dashboard logins on next sign-in
     if (!user.dashboardHash) {
@@ -84,6 +103,39 @@ export default async function authRoutes(app: FastifyInstance) {
     const token = req.cookies[SESSION_COOKIE]
     if (token) destroySession(token)
     reply.clearCookie(SESSION_COOKIE, { path: '/' })
+    return { ok: true }
+  })
+
+  /** Unauthenticated. Response is identical whether or not the account exists. */
+  app.post('/forgot', async (req, reply) => {
+    const { email } = (req.body ?? {}) as { email?: string }
+    if (!email?.trim()) return reply.code(400).send({ error: 'email required' })
+    const generic = { ok: true }
+    if (!forgotAllowed(req.ip)) return generic
+    const user = db.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())
+    if (!user) return generic
+    try {
+      await sendSetPasswordEmail(user, 'reset')
+    } catch (err) {
+      req.log.warn({ err }, 'forgot-password email failed')
+    }
+    return generic
+  })
+
+  /** Unauthenticated. Burns the token, sets both password hashes, revokes sessions. */
+  app.post('/reset', async (req, reply) => {
+    const { token, password } = (req.body ?? {}) as { token?: string; password?: string }
+    if (!token || !password) return reply.code(400).send({ error: 'token and password required' })
+    if (password.length < 8) {
+      return reply.code(400).send({ error: 'password must be at least 8 characters' })
+    }
+    const user = consumeResetToken(token)
+    if (!user) return reply.code(400).send({ error: 'invalid or expired link — request a new one' })
+    user.passwordHash = hashPassword(password)
+    user.dashboardHash = hermesHashPassword(password)
+    save()
+    destroyUserSessions(user.id)
+    await syncOwnerDashboards(user)
     return { ok: true }
   })
 }
