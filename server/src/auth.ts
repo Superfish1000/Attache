@@ -1,7 +1,7 @@
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { db, save } from './store.js'
-import type { Agent, Session, User } from './types.js'
+import type { Agent, ResetToken, Session, User } from './types.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -101,4 +101,38 @@ export function requireAdmin(req: FastifyRequest, reply: FastifyReply): boolean 
 
 export function canAccessAgent(user: User, agent: Agent): boolean {
   return user.role === 'admin' || agent.userId === user.id
+}
+
+const RESET_TOKEN_TTL_MS = 48 * 3600_000
+
+const hashToken = (raw: string) => createHash('sha256').update(raw).digest('hex')
+
+/** A token that can still be redeemed — same liveness rule the store uses to prune at boot. */
+const isLiveToken = (t: ResetToken) => !t.usedAt && Date.parse(t.expiresAt) > Date.now()
+
+/** Creates a single-use set-password token; returns the RAW token (only ever placed in the emailed link). */
+export function createResetToken(userId: string): string {
+  const raw = randomBytes(32).toString('base64url')
+  const now = Date.now()
+  db.resetTokens.push({
+    tokenHash: hashToken(raw),
+    userId,
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + RESET_TOKEN_TTL_MS).toISOString(),
+  })
+  save()
+  return raw
+}
+
+/** Validates and burns a token. Returns the user or null — never says why it failed (no oracle). */
+export function consumeResetToken(raw: string): User | null {
+  db.resetTokens = db.resetTokens.filter(isLiveToken)
+  const token = db.resetTokens.find((t) => t.tokenHash === hashToken(raw))
+  if (!token) {
+    save()
+    return null
+  }
+  token.usedAt = new Date().toISOString()
+  save()
+  return db.users.find((u) => u.id === token.userId) ?? null
 }
