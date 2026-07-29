@@ -109,17 +109,21 @@ export async function runFullSync(): Promise<SyncRun> {
     const diff = diffMembership(members, db.users)
     for (const m of diff.toCreate) {
       const email = m.mail ?? m.userPrincipalName
-      const user = createUser({ name: m.displayName ?? email, email, source: 'o365', o365Id: m.id })
-      createAgent(user.id)
-      run.created++
-      if (emailConfigured()) {
-        try {
-          await sendSetPasswordEmail(user, 'welcome')
-        } catch {
+      try {
+        const user = createUser({ name: m.displayName ?? email, email, source: 'o365', o365Id: m.id })
+        createAgent(user.id)
+        run.created++
+        if (emailConfigured()) {
+          try {
+            await sendSetPasswordEmail(user, 'welcome')
+          } catch {
+            run.emailFailures++
+          }
+        } else {
           run.emailFailures++
         }
-      } else {
-        run.emailFailures++
+      } catch (err) {
+        run.error = ((run.error ? run.error + '; ' : '') + `create ${email}: ${(err as Error).message}`).slice(0, 300)
       }
     }
     for (const u of diff.toDisable) {

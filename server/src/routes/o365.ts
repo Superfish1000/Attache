@@ -33,11 +33,6 @@ export default async function o365Routes(app: FastifyInstance) {
       pollMinutes: number
     }>
     const s = db.settings.o365
-    if (body.tenantId !== undefined) s.tenantId = body.tenantId.trim()
-    if (body.clientId !== undefined) s.clientId = body.clientId.trim()
-    if (body.groupId !== undefined) s.groupId = body.groupId.trim()
-    // empty secret in the payload means "keep the existing one"
-    if (body.clientSecret) s.clientSecret = body.clientSecret
     if (body.pollMinutes !== undefined) {
       const m = Number(body.pollMinutes)
       if (!Number.isInteger(m) || m < 0 || m > 10080) {
@@ -45,6 +40,11 @@ export default async function o365Routes(app: FastifyInstance) {
       }
       s.pollMinutes = m
     }
+    if (body.tenantId !== undefined) s.tenantId = body.tenantId.trim()
+    if (body.clientId !== undefined) s.clientId = body.clientId.trim()
+    if (body.groupId !== undefined) s.groupId = body.groupId.trim()
+    // empty secret in the payload means "keep the existing one"
+    if (body.clientSecret) s.clientSecret = body.clientSecret
     save()
     return maskedSettings()
   })
