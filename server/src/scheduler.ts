@@ -18,8 +18,10 @@ export function startScheduler(): void {
     lastRunAt = Date.now()
     try {
       await runFullSync()
-    } catch {
-      // a manual sync is in flight — this beat's slot is simply skipped
+    } catch (err) {
+      // usually just "a sync is already running" (slot skipped); anything else
+      // (e.g. a failed save in runFullSync's finally) must not vanish silently
+      console.warn('scheduled O365 sync:', (err as Error).message)
     }
   }
   setTimeout(() => {
