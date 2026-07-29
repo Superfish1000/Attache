@@ -20,13 +20,18 @@ function cookieOpts(maxAgeSeconds: number) {
   return { path: '/', httpOnly: true, sameSite: 'lax' as const, maxAge: maxAgeSeconds }
 }
 
-// naive per-IP limiter for the unauthenticated forgot endpoint
+// naive per-account limiter for the unauthenticated forgot endpoint.
+// keyed by normalized email, not req.ip — behind the Vite proxy every
+// request arrives as 127.0.0.1, which would make an IP bucket global.
 const forgotHits = new Map<string, { count: number; resetAt: number }>()
-function forgotAllowed(ip: string): boolean {
+function forgotAllowedFor(email: string): boolean {
   const now = Date.now()
-  const hit = forgotHits.get(ip)
+  if (forgotHits.size > 1000) {
+    for (const [k, v] of forgotHits) if (v.resetAt < now) forgotHits.delete(k)
+  }
+  const hit = forgotHits.get(email)
   if (!hit || hit.resetAt < now) {
-    forgotHits.set(ip, { count: 1, resetAt: now + 3600_000 })
+    forgotHits.set(email, { count: 1, resetAt: now + 3600_000 })
     return true
   }
   hit.count++
@@ -106,26 +111,36 @@ export default async function authRoutes(app: FastifyInstance) {
     return { ok: true }
   })
 
-  /** Unauthenticated. Response is identical whether or not the account exists. */
+  /**
+   * Unauthenticated. The body is identical for all outcomes (unknown email,
+   * disabled account, rate-limited, send failure) and the email send is
+   * fire-and-forget so response timing leaks nothing about account existence.
+   */
   app.post('/forgot', async (req, reply) => {
-    const { email } = (req.body ?? {}) as { email?: string }
-    if (!email?.trim()) return reply.code(400).send({ error: 'email required' })
-    const generic = { ok: true }
-    if (!forgotAllowed(req.ip)) return generic
-    const user = db.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())
-    if (!user) return generic
-    try {
-      await sendSetPasswordEmail(user, 'reset')
-    } catch (err) {
-      req.log.warn({ err }, 'forgot-password email failed')
+    const { email } = (req.body ?? {}) as { email?: unknown }
+    if (typeof email !== 'string' || !email.trim()) {
+      return reply.code(400).send({ error: 'email required' })
     }
+    const generic = { ok: true }
+    const key = email.trim().toLowerCase()
+    if (!forgotAllowedFor(key)) {
+      req.log.warn({ email: key }, 'forgot-password rate limited')
+      return generic
+    }
+    const user = db.users.find((u) => u.email.toLowerCase() === key)
+    if (!user || user.disabled) return generic
+    void sendSetPasswordEmail(user, 'reset').catch((err) =>
+      req.log.warn({ err }, 'forgot-password email failed'),
+    )
     return generic
   })
 
   /** Unauthenticated. Burns the token, sets both password hashes, revokes sessions. */
   app.post('/reset', async (req, reply) => {
-    const { token, password } = (req.body ?? {}) as { token?: string; password?: string }
-    if (!token || !password) return reply.code(400).send({ error: 'token and password required' })
+    const { token, password } = (req.body ?? {}) as { token?: unknown; password?: unknown }
+    if (typeof token !== 'string' || typeof password !== 'string' || !token || !password) {
+      return reply.code(400).send({ error: 'token and password required' })
+    }
     if (password.length < 8) {
       return reply.code(400).send({ error: 'password must be at least 8 characters' })
     }

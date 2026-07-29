@@ -59,8 +59,9 @@ export async function setUserDisabled(user: User, disabled: boolean): Promise<vo
     try {
       if (disabled) await stopAgentContainer(agent.id)
       else await startAgentContainer(agent)
-    } catch {
+    } catch (err) {
       // docker unavailable — the flag change still applies
+      console.warn('setUserDisabled container action failed:', (err as Error).message)
     }
   }
 }

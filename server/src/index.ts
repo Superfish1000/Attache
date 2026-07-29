@@ -27,7 +27,7 @@ app.addHook('onRequest', async (req, reply) => {
   if (url === '/api/health' || url.startsWith('/api/auth/')) return
   const token = req.cookies[SESSION_COOKIE]
   const user = token ? getSessionUser(token) : null
-  if (!user) return reply.code(401).send({ error: 'unauthorized' })
+  if (!user || user.disabled) return reply.code(401).send({ error: 'unauthorized' })
   req.user = user
 })
 
