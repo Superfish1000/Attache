@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { Chip, EnvVarsHelp, ErrorBanner, InfoPopup, fmtDate, normalizeImageRef } from '../components'
@@ -220,13 +220,38 @@ export default function AgentDetail() {
     }
   }
 
+  // While a sign-in runs, refresh its output automatically — multi-step flows
+  // (e.g. two device codes in succession) surface each next step without the
+  // user having to press Sign-in status.
+  const loginPoll = useRef<number | null>(null)
+  const stopLoginPoll = () => {
+    if (loginPoll.current !== null) {
+      window.clearInterval(loginPoll.current)
+      loginPoll.current = null
+    }
+  }
+  useEffect(() => stopLoginPoll, [])
+
   const mcpSignIn = async () => {
     setBusy(true)
     setErr('')
     try {
       const res = await api.agents.mcpLogin(id)
       setLogs(res.output)
-      flash('Sign-in started — follow the instructions below, then it completes on its own')
+      flash('Sign-in started — this output refreshes automatically; complete each code as it appears')
+      stopLoginPoll()
+      const startedAt = Date.now()
+      loginPoll.current = window.setInterval(async () => {
+        if (Date.now() - startedAt > 10 * 60_000) {
+          stopLoginPoll()
+          return
+        }
+        try {
+          setLogs((await api.agents.mcpLoginLog(id)).output)
+        } catch {
+          // transient — next tick retries
+        }
+      }, 5000)
     } catch (e) {
       setErr((e as Error).message)
     } finally {

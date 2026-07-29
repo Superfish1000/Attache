@@ -1,5 +1,5 @@
 import Docker from 'dockerode'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { Writable } from 'node:stream'
 import type { Agent, User } from './types.js'
@@ -405,12 +405,10 @@ export async function startMcpLogin(
   if (!def?.mcpLoginCommand.trim()) throw new Error('no MCP sign-in command on this definition')
   const logName = '.attache-mcp-login.log'
   const logInContainer = `${agent.config.mountPath.replace(/\/$/, '')}/${logName}`
-  const logOnHost = join(agentDir(agent.id), logName)
-  try {
-    rmSync(logOnHost, { force: true })
-  } catch {
-    // stale log removal is best-effort
-  }
+  // NOTE: no host-side rm here — deleting the file from the host while the
+  // container immediately recreates it races Docker Desktop's file sharing
+  // (the in-container open can hang on the ghost). The in-container `: >`
+  // truncation below is the sole staleness mechanism.
   const rendered = def.mcpLoginCommand
     .replaceAll('{{OWNER_EMAIL}}', owner?.email ?? '')
     .replaceAll('{{OWNER_NAME}}', owner?.name ?? '')
@@ -418,8 +416,7 @@ export async function startMcpLogin(
   const exec = await getDocker()
     .getContainer(nameFor(agent.id))
     .exec({
-      // truncate the previous log in-container first — the host-side rm above
-      // can't reach it once the runtime owns the dir, and a stale log would
+      // truncate the previous log in-container first — a stale log would
       // pose as this run's output
       Cmd: [
         'sh',
@@ -430,11 +427,12 @@ export async function startMcpLogin(
       AttachStderr: false,
     })
   await exec.start({ Detach: true })
-  // tail the log for the device code (login itself runs for minutes); host
-  // read first, falling back through docker when the container owns the file
+  // tail the log for the device code (login itself runs for minutes);
+  // readMcpLoginLog is host-first with a docker fallback
   const readLog = async (): Promise<string | null> => {
+    const p = join(agentDir(agent.id), logName)
     try {
-      if (existsSync(logOnHost)) return readFileSync(logOnHost, 'utf8')
+      if (existsSync(p)) return readFileSync(p, 'utf8')
     } catch {
       // EACCES — container-owned; fall through
     }
