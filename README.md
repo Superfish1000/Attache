@@ -9,7 +9,10 @@ A self-hosted web GUI for running **containerized AI agents** — one container 
 - **Agent management** — start/stop/regenerate containers, live logs, editable soul/memory/config files, per-agent cron jobs, auto-assigned host ports.
 - **Chat** — streaming chat with any agent you own, proxied through the agent's warm OpenAI-compatible gateway (no cold start per message).
 - **Hermes dashboard** — one-click access to each agent's own web dashboard, automatically secured with the owner's Attaché login (hash-only provisioning — no plaintext at rest).
-- **Office 365 sync** — pull members of an Entra group; new members get a user + agent automatically.
+- **Office 365 auto-sync** — poll an Entra group on a schedule: new members get a user (and optionally an agent + welcome email), members who leave are disabled, returners are re-enabled. Admins are never auto-disabled.
+- **Email onboarding (SMTP)** — new users get a set-password link by email; no passwords ever travel in mail.
+- **Password reset** — self-serve **Forgot password?** on the login screen, plus an admin **Email link** re-send on the Users page. Links are single-use and expire.
+- **Restart button** — restart the server from Settings → Updates after an update, no shell needed.
 - **MCP tool library** — stub today; planned shared tool server for all agents.
 
 ## Stack
@@ -52,7 +55,7 @@ Modern images (glibc 2.34+) need the `clone3` syscall, which old daemons' seccom
 
 ### Users (admin)
 
-Create accounts with a role and optional password; accounts without a password can't sign in (typical for O365-synced users until you set one). Per-row actions: change role, set password, create an agent (the dropdown above the table picks which container definition new agents use), delete (cascades to their agents). Lockout guards prevent deleting yourself or demoting/deleting the last admin.
+Create accounts with a role and optional password; accounts without a password can't sign in (typical for O365-synced users until you set one). Per-row actions: change role, set password, **Email link** (send a set-password link — needs SMTP configured), create an agent (the dropdown above the table picks which container definition new agents use), **Disable**/**Enable** (disabling revokes sessions and stops the user's containers; the row shows a `disabled` chip), delete (cascades to their agents). Lockout guards prevent deleting/disabling yourself or demoting/deleting the last admin.
 
 ### Containers (admin)
 
@@ -164,15 +167,20 @@ Every Hermes agent also serves its own full-featured web dashboard (port 9119, a
 
 ### Integrations — Office 365 (admin)
 
-Sync users from an Entra (Azure AD) group:
+Sync users from an Entra (Azure AD) group. The page walks through it:
 
-1. Create an app registration with **application** permissions `GroupMember.Read.All` + `User.Read.All` (admin-consented), client-credentials flow.
-2. Enter tenant ID, client ID, client secret, and the group's object ID on the Integrations page.
-3. **Preview members** to sanity-check, then **Sync now** — each new member gets a user (no password, `o365` source) and a default agent. Re-syncs are idempotent.
+1. **App registration** — paste the tenant ID, client ID, and client secret of an app registration with **application** permissions `GroupMember.Read.All` + `User.Read.All` (client-credentials flow). Once tenant + client IDs are entered, the page shows a one-click **grant admin consent** link straight into Microsoft's consent screen.
+2. **Group** — paste the group's object ID, then **Test connection** / **Preview members** to sanity-check (tests use *saved* values — save after changing credentials).
+3. **Polling** — poll interval in minutes (**0 = off**). Changes apply without a restart, and a sync also runs ~30 s after server boot. **Sync now** runs one on demand. A run-history table shows recent runs: members, created, disabled, re-enabled, email failures, error.
+4. **New member actions** — checkboxes for what happens beyond the user account itself: **create an agent** for each new user, and/or **email a set-password link** (requires SMTP *and* the Public GUI address — the page warns if either is missing).
+
+Sync semantics are **disable, don't delete**: members who leave the group are disabled (sessions revoked, containers stopped), members who return are re-enabled, and admins are never auto-disabled. **Important:** for O365-synced users, group membership is the source of truth — manually disabling a user who is still in the group gets reverted at the next poll. To keep someone out, remove them from the group instead.
 
 ### Settings (admin)
 
-- **Server** — API bind host/port (restart required), data-dir display.
+- **Updates** — shows the running commit vs GitHub with **Check for updates** / **Update now**, plus a **Restart server** button so updated code actually runs. The restart works by exiting the process and relying on whatever supervises it to bring it back: in production run Attaché under a supervisor (systemd with `Restart=always` — the recommendation for a Linux server — or pm2, or docker); in dev the tsx watcher respawns it.
+- **Server** — API bind host/port (restart required), **Public GUI address** (the origin used in emailed links), data-dir display.
+- **Email (SMTP)** — host, port, TLS mode (STARTTLS/none vs implicit TLS), optional username/password (blank username = no auth), and From address; leave host empty to disable email entirely. A **Send test email** button mails the signed-in admin to prove the config. This powers all set-password links: new-user onboarding, **Forgot password?**, and the Users page's **Email link** button. Emailed links **require** the Public GUI address (Settings → Server) to be set — without it Attaché can't know what URL to put in the mail.
 - **Docker** — universal daemon config: socket/pipe path, auto-pull, host-port range start, restart policy, security options, and the shared **default env** merged into every container (settings → definition → agent, later wins).
 - **Security** — session lifetime. Passwords are scrypt hashes; sessions persist across server restarts.
 
@@ -197,6 +205,8 @@ Creates the account as an admin, or — if the email already exists — promotes
 | GUI dev server won't bind | Windows excluded-port ranges — `netsh interface ipv4 show excludedportrange protocol=tcp`, then change ports in `.claude/launch.json` / vite config. |
 | Slow replies despite warm gateway | The model does the thinking — switch the agent's model (e.g. `hermes config set model.default anthropic/claude-sonnet-5` inside the container) for faster turnaround. |
 | Update blocked: "working tree has local changes" | The error names the files. `git stash` (or `git checkout -- <files>`) in the install dir, then retry. Lockfile-only churn from `npm install` is reset automatically. |
+| Set-password emails not arriving | Settings → Email → **Send test email** to prove SMTP; the **Public GUI address** (Settings → Server) must be set for links; check the run history's email-failures column on the Integrations page. |
+| Disabled user came back (re-enabled) | They're still in the O365 group — group membership is the source of truth for synced users. Remove them from the group instead. |
 | Agent files unreadable on a Linux host ("permission denied" / accessed-through-container notes) | The runtime chowns its data dir to its internal user (e.g. UID 10000) at container start. Attaché handles this two ways: (1) it transparently reads **and writes** through Docker while the container runs, and (2) ~20s–2min after each container start it re-groups the data dir to its own group (`g+rwX`, setgid dirs — owner stays the runtime's user), restoring normal on-disk access for the account running Attaché. Files the runtime creates between fixes are group-readable immediately and group-writable after the next start. For other accounts or stronger guarantees: `sudo setfacl -R -m u:$USER:rwX -m d:u:$USER:rwX data/agents`. |
 
 ## Security notes

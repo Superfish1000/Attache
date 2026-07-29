@@ -36,6 +36,11 @@ export default function Integrations() {
   }, [])
 
   const saveSettings = async () => {
+    const pm = pollMinutes.trim() === '' ? 0 : Number(pollMinutes)
+    if (!Number.isInteger(pm) || pm < 0 || pm > 10080) {
+      setErr('Poll interval must be a whole number of minutes (0–10080)')
+      return
+    }
     setBusy(true)
     setErr('')
     setNote('')
@@ -45,7 +50,7 @@ export default function Integrations() {
         clientId,
         clientSecret,
         groupId,
-        pollMinutes: pollMinutes.trim() === '' ? 0 : Number(pollMinutes),
+        pollMinutes: pm,
         createAgents,
         sendWelcomeEmails,
       })
