@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { db, save } from '../store.js'
-import { createUser, deleteUser, syncOwnerDashboards } from '../users.js'
+import { createUser, deleteUser, setUserDisabled, syncOwnerDashboards } from '../users.js'
 import { hashPassword, hermesHashPassword, requireAdmin, safeUser } from '../auth.js'
+import { sendSetPasswordEmail } from '../mailer.js'
 import type { Role } from '../types.js'
 
 const isRole = (r: unknown): r is Role => r === 'admin' || r === 'standard'
@@ -53,7 +54,12 @@ export default async function userRoutes(app: FastifyInstance) {
     if (!requireAdmin(req, reply)) return reply
     const user = db.users.find((u) => u.id === (req.params as { id: string }).id)
     if (!user) return reply.code(404).send({ error: 'user not found' })
-    const { name, email, role } = (req.body ?? {}) as { name?: string; email?: string; role?: string }
+    const { name, email, role, disabled } = (req.body ?? {}) as {
+      name?: string
+      email?: string
+      role?: string
+      disabled?: boolean
+    }
     if (role !== undefined) {
       if (!isRole(role)) return reply.code(400).send({ error: "role must be 'admin' or 'standard'" })
       if (role !== 'admin' && lastAdmin(user.id)) {
@@ -63,6 +69,15 @@ export default async function userRoutes(app: FastifyInstance) {
     }
     if (name?.trim()) user.name = name.trim()
     if (email?.trim()) user.email = email.trim()
+    if (disabled !== undefined) {
+      if (disabled && req.user?.id === user.id) {
+        return reply.code(400).send({ error: 'cannot disable your own account' })
+      }
+      if (disabled && lastAdmin(user.id)) {
+        return reply.code(400).send({ error: 'cannot disable the last admin' })
+      }
+      await setUserDisabled(user, Boolean(disabled))
+    }
     save()
     return safeUser(user)
   })
@@ -80,6 +95,19 @@ export default async function userRoutes(app: FastifyInstance) {
     save()
     await syncOwnerDashboards(user)
     return safeUser(user)
+  })
+
+  /** Emails a set-password link — onboarding for password-less users, reset otherwise. */
+  app.post('/:id/send-reset', async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply
+    const user = db.users.find((u) => u.id === (req.params as { id: string }).id)
+    if (!user) return reply.code(404).send({ error: 'user not found' })
+    try {
+      await sendSetPasswordEmail(user, user.passwordHash ? 'reset' : 'welcome')
+      return { ok: true }
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message })
+    }
   })
 
   app.delete('/:id', async (req, reply) => {
