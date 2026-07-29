@@ -44,7 +44,10 @@ export default function Reset() {
             </a>
           </>
         ) : !token ? (
-          <p>This link is missing its token — request a new one from the sign-in screen.</p>
+          <p>
+            This link is missing its token — request a new one from the sign-in screen.{' '}
+            <a href="/">Go to sign in</a>
+          </p>
         ) : (
           <>
             <p className="muted" style={{ marginTop: 0 }}>
@@ -55,11 +58,22 @@ export default function Reset() {
               <label>
                 New password <span className="muted">(min 8 chars)</span>
               </label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus />
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoFocus
+              />
             </div>
             <div className="field">
               <label>Confirm password</label>
-              <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+              />
             </div>
             <button className="btn btn-primary" style={{ width: '100%' }} disabled={busy || password.length < 8 || !confirm}>
               Set password

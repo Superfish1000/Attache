@@ -286,6 +286,8 @@ label {
   font: inherit;
   cursor: pointer;
   transition: border-color 0.12s, background 0.12s;
+  display: inline-block;
+  text-decoration: none;
 }
 
 .btn:hover:not(:disabled) {

@@ -51,7 +51,15 @@ export default function Login() {
           {mode === 'sent' ? (
             <>
               <p>If that account exists, a set-password link is on its way to {email}.</p>
-              <button type="button" className="btn" style={{ width: '100%' }} onClick={() => setMode('login')}>
+              <button
+                type="button"
+                className="btn"
+                style={{ width: '100%' }}
+                onClick={() => {
+                  setErr('')
+                  setMode('login')
+                }}
+              >
                 Back to sign in
               </button>
             </>
@@ -68,7 +76,15 @@ export default function Login() {
               <button className="btn btn-primary" style={{ width: '100%' }} disabled={busy || !email}>
                 Send reset link
               </button>
-              <button type="button" className="btn btn-ghost" style={{ width: '100%', marginTop: 8 }} onClick={() => setMode('login')}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ width: '100%', marginTop: 8 }}
+                onClick={() => {
+                  setErr('')
+                  setMode('login')
+                }}
+              >
                 Back to sign in
               </button>
             </>

@@ -77,6 +77,33 @@ export default function Users() {
     }
   }
 
+  const emailLink = async (u: User) => {
+    setErr('')
+    try {
+      await api.users.sendReset(u.id)
+      alert(`Set-password link emailed to ${u.email}`)
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
+  const toggleDisabled = async (u: User) => {
+    if (!u.disabled) {
+      const note =
+        u.source === 'o365'
+          ? '\n\nNote: this user is synced from O365 — if they are still in the group, the next poll re-enables them. Remove them from the group for a permanent disable.'
+          : ''
+      if (!confirm(`Disable ${u.name}? Sessions are revoked and their containers stopped.${note}`)) return
+    }
+    setErr('')
+    try {
+      await api.users.update(u.id, { disabled: !u.disabled })
+      reload()
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
   const newAgent = async (userId: string) => {
     setErr('')
     try {
@@ -194,7 +221,13 @@ export default function Users() {
                     <Chip tone={u.source === 'o365' ? 'warn' : 'off'}>{u.source}</Chip>
                   </td>
                   <td>
-                    {u.hasPassword ? <Chip tone="ok">enabled</Chip> : <Chip tone="off">no password</Chip>}
+                    {u.disabled ? (
+                      <Chip tone="err">disabled</Chip>
+                    ) : u.hasPassword ? (
+                      <Chip tone="ok">enabled</Chip>
+                    ) : (
+                      <Chip tone="off">no password</Chip>
+                    )}
                   </td>
                   <td>{agents.filter((a) => a.userId === u.id).length}</td>
                   <td>
@@ -204,6 +237,12 @@ export default function Users() {
                       </button>
                       <button className="btn" onClick={() => setUserPassword(u)}>
                         Set password
+                      </button>
+                      <button className="btn" onClick={() => emailLink(u)}>
+                        Email link
+                      </button>
+                      <button className="btn" disabled={me?.id === u.id} onClick={() => toggleDisabled(u)}>
+                        {u.disabled ? 'Enable' : 'Disable'}
                       </button>
                       <button
                         className="btn btn-danger"

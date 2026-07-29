@@ -7,6 +7,14 @@ export default function Settings() {
   const [dataDir, setDataDir] = useState('')
   const [host, setHost] = useState('')
   const [port, setPort] = useState('')
+  const [publicBaseUrl, setPublicBaseUrl] = useState('')
+  const [emHost, setEmHost] = useState('')
+  const [emPort, setEmPort] = useState('587')
+  const [emSecure, setEmSecure] = useState(false)
+  const [emUser, setEmUser] = useState('')
+  const [emPass, setEmPass] = useState('')
+  const [emFrom, setEmFrom] = useState('')
+  const [emHasPass, setEmHasPass] = useState(false)
   const [socketPath, setSocketPath] = useState('')
   const [autoPull, setAutoPull] = useState(true)
   const [portRangeStart, setPortRangeStart] = useState('')
@@ -60,6 +68,13 @@ export default function Settings() {
     setDataDir(s.dataDir)
     setHost(s.server.host)
     setPort(String(s.server.port))
+    setPublicBaseUrl(s.server.publicBaseUrl)
+    setEmHost(s.email.host)
+    setEmPort(String(s.email.port))
+    setEmSecure(s.email.secure)
+    setEmUser(s.email.user)
+    setEmFrom(s.email.from)
+    setEmHasPass(s.email.hasPass)
     setSocketPath(s.docker.socketPath)
     setAutoPull(s.docker.autoPull)
     setPortRangeStart(String(s.docker.portRangeStart))
@@ -90,7 +105,15 @@ export default function Settings() {
         throw new Error('Default env must be a JSON object of key/value strings')
       }
       const saved = await api.settings.save({
-        server: { host: host.trim(), port: Number(port) },
+        server: { host: host.trim(), port: Number(port), publicBaseUrl: publicBaseUrl.trim() },
+        email: {
+          host: emHost,
+          port: Number(emPort) || 587,
+          secure: emSecure,
+          user: emUser,
+          ...(emPass ? { pass: emPass } : {}),
+          from: emFrom,
+        },
         docker: {
           socketPath: socketPath.trim(),
           autoPull,
@@ -102,6 +125,7 @@ export default function Settings() {
         security: { sessionTtlHours: Number(sessionTtl) },
       })
       apply(saved)
+      setEmPass('')
       setNote('Settings saved. Host/port changes take effect after a server restart.')
     } catch (e) {
       setErr((e as Error).message)
@@ -182,10 +206,82 @@ export default function Settings() {
           <label>API port (restart required)</label>
           <input value={port} onChange={(e) => setPort(e.target.value)} placeholder="7701" />
         </div>
+        <div className="field">
+          <label>Public GUI address (used in emailed links)</label>
+          <input
+            value={publicBaseUrl}
+            onChange={(e) => setPublicBaseUrl(e.target.value)}
+            placeholder={window.location.origin}
+          />
+        </div>
         <p className="muted" style={{ marginBottom: 0 }}>
           Data directory: <span className="mono">{dataDir}</span> (override with{' '}
           <span className="mono">ATTACHE_DATA_DIR</span>)
         </p>
+      </div>
+
+      <h2>Email (SMTP)</h2>
+      <div className="panel">
+        <p className="muted" style={{ marginTop: 0 }}>
+          Used for set-password links: new-user onboarding, "Forgot password?", and the Users page's
+          Email link button. Leave host empty to disable.
+        </p>
+        <div className="form-row">
+          <div className="field">
+            <label>Host</label>
+            <input value={emHost} onChange={(e) => setEmHost(e.target.value)} placeholder="smtp.office365.com" />
+          </div>
+          <div className="field">
+            <label>Port</label>
+            <input value={emPort} onChange={(e) => setEmPort(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>TLS mode</label>
+            <select value={emSecure ? '1' : '0'} onChange={(e) => setEmSecure(e.target.value === '1')}>
+              <option value="0">STARTTLS / none (port 587/25)</option>
+              <option value="1">implicit TLS (port 465)</option>
+            </select>
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="field">
+            <label>Username (blank = no auth)</label>
+            <input value={emUser} onChange={(e) => setEmUser(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Password {emHasPass && <span className="ok-note">(saved — leave blank to keep)</span>}</label>
+            <input
+              type="password"
+              value={emPass}
+              onChange={(e) => setEmPass(e.target.value)}
+              placeholder={emHasPass ? '••••••••' : ''}
+            />
+          </div>
+          <div className="field">
+            <label>From address</label>
+            <input value={emFrom} onChange={(e) => setEmFrom(e.target.value)} placeholder="attache@example.com" />
+          </div>
+        </div>
+        <div className="btn-row">
+          <button
+            className="btn"
+            disabled={busy}
+            onClick={async () => {
+              setErr('')
+              try {
+                const r = await api.settings.emailTest()
+                alert(`Test email sent to ${r.to}`)
+              } catch (e) {
+                setErr((e as Error).message)
+              }
+            }}
+          >
+            Send test email
+          </button>
+          <span className="muted" style={{ alignSelf: 'center' }}>
+            Save settings first — the test uses saved values.
+          </span>
+        </div>
       </div>
 
       <h2>Docker</h2>
