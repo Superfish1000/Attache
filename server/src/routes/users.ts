@@ -7,9 +7,10 @@ import type { Role } from '../types.js'
 
 const isRole = (r: unknown): r is Role => r === 'admin' || r === 'standard'
 
-const lastAdmin = (id: string) =>
-  db.users.filter((u) => u.role === 'admin').length === 1 &&
-  db.users.find((u) => u.id === id)?.role === 'admin'
+const lastAdmin = (id: string) => {
+  const enabled = db.users.filter((u) => u.role === 'admin' && !u.disabled)
+  return enabled.length === 1 && enabled[0].id === id
+}
 
 export default async function userRoutes(app: FastifyInstance) {
   // list is open to any session (standard users see only themselves — needed for owner
@@ -60,25 +61,29 @@ export default async function userRoutes(app: FastifyInstance) {
       role?: string
       disabled?: boolean
     }
+    // validate everything before mutating — a 400 below must leave the user untouched
     if (role !== undefined) {
       if (!isRole(role)) return reply.code(400).send({ error: "role must be 'admin' or 'standard'" })
       if (role !== 'admin' && lastAdmin(user.id)) {
         return reply.code(400).send({ error: 'cannot demote the last admin' })
       }
-      user.role = role
     }
-    if (name?.trim()) user.name = name.trim()
-    if (email?.trim()) user.email = email.trim()
     if (disabled !== undefined) {
+      if (typeof disabled !== 'boolean') {
+        return reply.code(400).send({ error: 'disabled must be a boolean' })
+      }
       if (disabled && req.user?.id === user.id) {
         return reply.code(400).send({ error: 'cannot disable your own account' })
       }
       if (disabled && lastAdmin(user.id)) {
         return reply.code(400).send({ error: 'cannot disable the last admin' })
       }
-      await setUserDisabled(user, Boolean(disabled))
     }
+    if (role !== undefined) user.role = role as Role
+    if (name?.trim()) user.name = name.trim()
+    if (email?.trim()) user.email = email.trim()
     save()
+    if (disabled !== undefined) await setUserDisabled(user, disabled)
     return safeUser(user)
   })
 
@@ -102,6 +107,7 @@ export default async function userRoutes(app: FastifyInstance) {
     if (!requireAdmin(req, reply)) return reply
     const user = db.users.find((u) => u.id === (req.params as { id: string }).id)
     if (!user) return reply.code(404).send({ error: 'user not found' })
+    if (user.disabled) return reply.code(400).send({ error: 'account is disabled — enable it first' })
     try {
       await sendSetPasswordEmail(user, user.passwordHash ? 'reset' : 'welcome')
       return { ok: true }
