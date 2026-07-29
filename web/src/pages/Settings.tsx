@@ -224,7 +224,7 @@ export default function Settings() {
           <button
             className="btn"
             disabled={updBusy}
-            title="Exit the server process so its supervisor (or dev watcher) starts the updated code"
+            title="Exit the server so its supervisor — or the dev watcher — brings the updated code up"
             onClick={restartServer}
           >
             Restart server

@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { utimesSync } from 'node:fs'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import type { FastifyInstance } from 'fastify'
@@ -81,17 +82,29 @@ export default async function updateRoutes(app: FastifyInstance) {
   })
 
   /**
-   * Asks the process to exit cleanly and relies on whatever runs it to bring
-   * it back: systemd Restart=always, pm2, a docker restart policy, or the dev
-   * watcher. Without a supervisor the GUI reports that it didn't come back.
+   * Asks the process to exit cleanly. Brought back by a supervisor
+   * (systemd Restart=always, pm2, a docker restart policy) in production, or
+   * by the dev watcher via the timestamp nudge below. Without either, the GUI
+   * reports that it didn't come back.
    */
   app.post('/restart', async (req, reply) => {
     reply.send({ ok: true })
     setTimeout(async () => {
+      // hard-exit backstop in case close() ever hangs (version-proof)
+      setTimeout(() => process.exit(0), 5000).unref()
       try {
         await app.close()
       } catch {
         // close best-effort — exiting anyway
+      }
+      try {
+        // nudge the dev watcher (tsx watch reruns on file change, NOT on clean
+        // exit): a timestamp-only touch of the entry file, content untouched
+        const entry = fileURLToPath(new URL('../index.ts', import.meta.url))
+        const now = new Date()
+        utimesSync(entry, now, now)
+      } catch {
+        // production installs run under a supervisor instead
       }
       process.exit(0)
     }, 300)

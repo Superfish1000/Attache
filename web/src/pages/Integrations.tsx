@@ -45,12 +45,14 @@ export default function Integrations() {
         clientId,
         clientSecret,
         groupId,
-        pollMinutes: Number(pollMinutes) || 0,
+        pollMinutes: pollMinutes.trim() === '' ? 0 : Number(pollMinutes),
         createAgents,
         sendWelcomeEmails,
       })
       setView(s)
       setClientSecret('')
+      setTestResult(null)
+      setMembers(null)
       setNote('Saved')
     } catch (e) {
       setErr((e as Error).message)
@@ -100,6 +102,7 @@ export default function Integrations() {
   }
 
   const emailReady = Boolean(settings?.email.host && settings?.email.from)
+  const linkReady = Boolean(settings?.server.publicBaseUrl)
 
   return (
     <>
@@ -140,7 +143,7 @@ export default function Integrations() {
           <p className="muted" style={{ marginBottom: 0 }}>
             After granting the permissions,{' '}
             <a
-              href={`https://login.microsoftonline.com/${tenantId}/adminconsent?client_id=${clientId}`}
+              href={`https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/adminconsent?client_id=${encodeURIComponent(clientId)}`}
               target="_blank"
               rel="noreferrer"
             >
@@ -164,6 +167,9 @@ export default function Integrations() {
           <button className="btn" disabled={busy || !view?.configured} onClick={preview}>
             Preview members
           </button>
+          <span className="muted" style={{ alignSelf: 'center' }}>
+            Tests use saved values — press Save settings (step 3) after changing anything above.
+          </span>
         </div>
         {testResult && (
           <p className="ok-note" style={{ marginBottom: 0 }}>
@@ -213,8 +219,9 @@ export default function Integrations() {
         </div>
         {note && <p className="ok-note">{note}</p>}
         <p className="muted">
-          New members get a user + agent (and a set-password email). Members who leave are disabled —
-          never deleted, never admins. Last sync: {fmtDate(view?.lastSync)}
+          New members get a user account (the agent and set-password email are configured in step
+          4). Members who leave are disabled — never deleted, never admins. Last sync:{' '}
+          {fmtDate(view?.lastSync)}
         </p>
         {syncResult && (
           <p>
@@ -278,14 +285,19 @@ export default function Integrations() {
           <span>Email a set-password link</span>
         </label>
         {sendWelcomeEmails ? (
-          emailReady ? (
-            <p className="ok-note" style={{ marginBottom: 0 }}>
-              SMTP is configured — links go out automatically.
-            </p>
-          ) : (
+          !emailReady ? (
             <p style={{ marginBottom: 0 }}>
               <Chip tone="warn">not configured</Chip> SMTP isn't configured — new users will be
               created without a password until you set it up under Settings → Email.
+            </p>
+          ) : !linkReady ? (
+            <p style={{ marginBottom: 0 }}>
+              <Chip tone="warn">not configured</Chip> Public GUI address isn't set — emailed links
+              need it. Configure it under Settings → Server.
+            </p>
+          ) : (
+            <p className="ok-note" style={{ marginBottom: 0 }}>
+              SMTP is configured — links go out automatically.
             </p>
           )
         ) : (
