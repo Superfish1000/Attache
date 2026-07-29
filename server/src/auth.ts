@@ -126,10 +126,12 @@ export function createResetToken(userId: string): string {
 
 /** Validates and burns a token. Returns the user or null — never says why it failed (no oracle). */
 export function consumeResetToken(raw: string): User | null {
+  const before = db.resetTokens.length
   db.resetTokens = db.resetTokens.filter(isLiveToken)
-  const token = db.resetTokens.find((t) => t.tokenHash === hashToken(raw))
+  const rawHash = hashToken(raw)
+  const token = db.resetTokens.find((t) => t.tokenHash === rawHash)
   if (!token) {
-    save()
+    if (db.resetTokens.length !== before) save()
     return null
   }
   token.usedAt = new Date().toISOString()
