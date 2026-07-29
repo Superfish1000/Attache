@@ -330,6 +330,12 @@ label {
   flex-wrap: wrap;
 }
 
+/* form-row strips its fields' bottom margin — restore breathing room when
+   a button row follows directly */
+.form-row + .btn-row {
+  margin-top: 14px;
+}
+
 /* auth */
 .login-wrap {
   min-height: 100vh;
