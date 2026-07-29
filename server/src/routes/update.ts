@@ -80,6 +80,23 @@ export default async function updateRoutes(app: FastifyInstance) {
     }
   })
 
+  /**
+   * Asks the process to exit cleanly and relies on whatever runs it to bring
+   * it back: systemd Restart=always, pm2, a docker restart policy, or the dev
+   * watcher. Without a supervisor the GUI reports that it didn't come back.
+   */
+  app.post('/restart', async (req, reply) => {
+    reply.send({ ok: true })
+    setTimeout(async () => {
+      try {
+        await app.close()
+      } catch {
+        // close best-effort — exiting anyway
+      }
+      process.exit(0)
+    }, 300)
+  })
+
   /** git pull --ff-only + npm install. The dev server restarts itself (tsx watch). */
   app.post('/apply', async (req, reply) => {
     try {

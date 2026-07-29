@@ -156,5 +156,6 @@ export const api = {
   update: {
     check: () => req<UpdateCheck>('/api/update/check'),
     apply: () => req<UpdateResult>('/api/update/apply', { method: 'POST' }),
+    restart: () => req<{ ok: boolean }>('/api/update/restart', { method: 'POST' }),
   },
 }

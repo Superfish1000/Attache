@@ -59,6 +59,41 @@ export default function Settings() {
     }
   }
 
+  const restartServer = async () => {
+    if (!confirm('Restart the Attaché server? The GUI reconnects automatically once it is back.')) return
+    setUpdBusy(true)
+    setUpdErr('')
+    try {
+      await api.update.restart()
+    } catch {
+      // the process may die before the response flushes — that's fine
+    }
+    // poll health until the server is back (up to 60s)
+    const deadline = Date.now() + 60_000
+    let back = false
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000))
+      try {
+        const res = await fetch('/api/health')
+        if (res.ok) {
+          back = true
+          break
+        }
+      } catch {
+        // still down
+      }
+    }
+    setUpdBusy(false)
+    if (back) {
+      setUpdResult(null)
+      await checkUpdates()
+    } else {
+      setUpdErr(
+        'Server did not come back within 60s — it has no supervisor to restart it. Start it manually on the host.',
+      )
+    }
+  }
+
   useEffect(() => {
     void checkUpdates()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -186,6 +221,14 @@ export default function Settings() {
               {updBusy ? 'Updating…' : 'Update now'}
             </button>
           )}
+          <button
+            className="btn"
+            disabled={updBusy}
+            title="Exit the server process so its supervisor (or dev watcher) starts the updated code"
+            onClick={restartServer}
+          >
+            Restart server
+          </button>
         </div>
         {updResult && (
           <p className={updResult.updated ? 'ok-note' : 'muted'} style={{ marginBottom: 0 }}>
