@@ -70,3 +70,16 @@ test('already-disabled user still gone stays untouched (no double-disable)', () 
   assert.equal(d.toDisable.length, 0)
   assert.equal(d.toReenable.length, 0)
 })
+
+test('disabled user with no o365Id is re-enabled by email match', () => {
+  const u = user({ o365Id: undefined, disabled: true, email: 'mail-only@corp.com' })
+  const d = diffMembership([member('mX', 'mail-only@corp.com')], [u])
+  assert.deepEqual(d.toReenable, [u])
+})
+
+test('member with null mail matches users by userPrincipalName', () => {
+  const m: GraphMember = { id: 'm9', displayName: null, mail: null, userPrincipalName: 'upn@corp.com' }
+  const u = user({ email: 'upn@corp.com' })
+  const d = diffMembership([m], [u])
+  assert.equal(d.toCreate.length, 0)
+})

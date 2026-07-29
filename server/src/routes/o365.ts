@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { db, save } from '../store.js'
-import { listGroupMembers, o365Configured, syncGroup } from '../o365.js'
+import { listGroupMembers, o365Configured, runFullSync, testConnection } from '../o365.js'
 import { requireAdmin } from '../auth.js'
 
 function maskedSettings() {
@@ -12,6 +12,8 @@ function maskedSettings() {
     hasSecret: Boolean(s.clientSecret),
     configured: o365Configured(),
     lastSync: db.settings.lastO365Sync,
+    pollMinutes: s.pollMinutes,
+    lastRuns: s.lastRuns,
   }
 }
 
@@ -22,12 +24,13 @@ export default async function o365Routes(app: FastifyInstance) {
 
   app.get('/settings', async () => maskedSettings())
 
-  app.put('/settings', async (req) => {
+  app.put('/settings', async (req, reply) => {
     const body = (req.body ?? {}) as Partial<{
       tenantId: string
       clientId: string
       clientSecret: string
       groupId: string
+      pollMinutes: number
     }>
     const s = db.settings.o365
     if (body.tenantId !== undefined) s.tenantId = body.tenantId.trim()
@@ -35,6 +38,13 @@ export default async function o365Routes(app: FastifyInstance) {
     if (body.groupId !== undefined) s.groupId = body.groupId.trim()
     // empty secret in the payload means "keep the existing one"
     if (body.clientSecret) s.clientSecret = body.clientSecret
+    if (body.pollMinutes !== undefined) {
+      const m = Number(body.pollMinutes)
+      if (!Number.isInteger(m) || m < 0 || m > 10080) {
+        return reply.code(400).send({ error: 'pollMinutes must be 0 (off) to 10080 (weekly)' })
+      }
+      s.pollMinutes = m
+    }
     save()
     return maskedSettings()
   })
@@ -54,7 +64,16 @@ export default async function o365Routes(app: FastifyInstance) {
 
   app.post('/sync', async (req, reply) => {
     try {
-      return await syncGroup()
+      return await runFullSync()
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message })
+    }
+  })
+
+  /** Live check: token + group lookup + member count. */
+  app.get('/test', async (req, reply) => {
+    try {
+      return await testConnection()
     } catch (err) {
       return reply.code(400).send({ error: (err as Error).message })
     }
