@@ -59,15 +59,20 @@ export const api = {
     login: (email: string, password: string) =>
       req<{ user: User }>('/api/auth/login', json('POST', { email, password })),
     logout: () => req<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+    forgot: (email: string) => req<{ ok: boolean }>('/api/auth/forgot', json('POST', { email })),
+    reset: (token: string, password: string) =>
+      req<{ ok: boolean }>('/api/auth/reset', json('POST', { token, password })),
   },
   users: {
     list: () => req<User[]>('/api/users'),
     create: (u: { name: string; email: string; role: Role; password?: string }) =>
       req<User>('/api/users', json('POST', u)),
-    update: (id: string, patch: { name?: string; email?: string; role?: Role }) =>
+    update: (id: string, patch: { name?: string; email?: string; role?: Role; disabled?: boolean }) =>
       req<User>(`/api/users/${id}`, json('PATCH', patch)),
     setPassword: (id: string, password: string) =>
       req<User>(`/api/users/${id}/password`, json('PUT', { password })),
+    sendReset: (id: string) =>
+      req<{ ok: boolean }>(`/api/users/${id}/send-reset`, { method: 'POST' }),
     remove: (id: string) => req<void>(`/api/users/${id}`, { method: 'DELETE' }),
   },
   agents: {
@@ -108,10 +113,16 @@ export const api = {
   },
   o365: {
     settings: () => req<O365SettingsView>('/api/o365/settings'),
-    saveSettings: (s: { tenantId: string; clientId: string; clientSecret: string; groupId: string }) =>
-      req<O365SettingsView>('/api/o365/settings', json('PUT', s)),
+    saveSettings: (s: {
+      tenantId?: string
+      clientId?: string
+      clientSecret?: string
+      groupId?: string
+      pollMinutes?: number
+    }) => req<O365SettingsView>('/api/o365/settings', json('PUT', s)),
     preview: () => req<O365Member[]>('/api/o365/preview'),
     sync: () => req<SyncRun>('/api/o365/sync', { method: 'POST' }),
+    test: () => req<{ groupName: string; memberCount: number }>('/api/o365/test'),
   },
   containerDefs: {
     list: () => req<{ defs: ContainerDef[]; defaultId: string }>('/api/container-defs'),
@@ -133,7 +144,9 @@ export const api = {
       server?: Partial<SettingsView['server']>
       docker?: Partial<SettingsView['docker']>
       security?: Partial<SettingsView['security']>
+      email?: Partial<{ host: string; port: number; secure: boolean; user: string; pass: string; from: string }>
     }) => req<SettingsView>('/api/settings', json('PUT', s)),
+    emailTest: () => req<{ ok: boolean; to: string }>('/api/settings/email/test', { method: 'POST' }),
   },
   mcp: {
     status: () => req<McpStatus>('/api/mcp/status'),

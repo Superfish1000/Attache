@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { AuthProvider, useAuth } from './auth'
 import { Chip } from './components'
@@ -12,6 +12,7 @@ import Settings from './pages/Settings'
 import Containers from './pages/Containers'
 import Chat from './pages/Chat'
 import Login from './pages/Login'
+import Reset from './pages/Reset'
 
 function Brand() {
   return (
@@ -23,6 +24,9 @@ function Brand() {
 
 function Shell() {
   const { user, loading, logout } = useAuth()
+
+  const { pathname } = useLocation()
+  if (pathname === '/reset') return <Reset />
 
   if (loading) {
     return (
