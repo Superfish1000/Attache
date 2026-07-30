@@ -136,6 +136,8 @@ export interface O365Settings {
   pollMinutes: number
   /** Create an agent for each newly synced user. */
   createAgents: boolean
+  /** Start the new agent's container immediately after creation (first start pulls the image). */
+  startAgents: boolean
   /** Email each newly synced user a set-password link (requires SMTP + public URL). */
   sendWelcomeEmails: boolean
   /** Last 10 sync runs, newest first. */

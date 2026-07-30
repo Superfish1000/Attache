@@ -1,5 +1,5 @@
 import Docker from 'dockerode'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { Writable } from 'node:stream'
 import type { Agent, User } from './types.js'
@@ -41,6 +41,7 @@ async function runEphemeralMount(
   agent: Agent,
   entrypoint: string[],
   cmd: string[],
+  writable = false,
 ): Promise<string | null> {
   let scratch: Docker.Container | null = null
   try {
@@ -50,7 +51,10 @@ async function runEphemeralMount(
       Image: agent.config.image,
       Entrypoint: entrypoint,
       Cmd: cmd,
-      HostConfig: { Binds: [`${bindSrc}:/attache-ro:ro`], NetworkMode: 'none' },
+      HostConfig: {
+        Binds: [writable ? `${bindSrc}:/attache-rw` : `${bindSrc}:/attache-ro:ro`],
+        NetworkMode: 'none',
+      },
     })
     await scratch.start()
     const done = (await scratch.wait()) as { StatusCode?: number }
@@ -74,6 +78,30 @@ async function runEphemeralMount(
 
 const readViaEphemeralMount = (agent: Agent, relPath: string) =>
   runEphemeralMount(agent, ['cat'], [`/attache-ro/${relPath}`])
+
+/**
+ * Deletes the agent's data dir. Host-first; when the runtime's chown blocks
+ * host deletion (Linux — container-owned subdirs like .local/share), empties
+ * the dir as root through a writable ephemeral mount, then removes the
+ * now-empty dir host-side (only needs write on data/agents, which the host
+ * account owns). Best-effort: a leftover dir is logged, never fatal.
+ */
+export async function removeAgentStorage(agent: Agent): Promise<void> {
+  const dir = agentDir(agent.id)
+  if (!existsSync(dir)) return
+  try {
+    rmSync(dir, { recursive: true, force: true })
+    return
+  } catch {
+    // container-owned entries — fall through to the root-powered path
+  }
+  await runEphemeralMount(agent, ['find'], ['/attache-rw', '-mindepth', '1', '-delete'], true)
+  try {
+    rmSync(dir, { recursive: true, force: true })
+  } catch (err) {
+    console.warn('agent data dir left behind:', dir, (err as Error).message)
+  }
+}
 
 /**
  * Reads a file from the agent's data dir through the Docker daemon.

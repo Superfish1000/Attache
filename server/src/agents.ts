@@ -239,5 +239,11 @@ export function putCronJob(id: string, file: string, content: string): void {
 export function deleteAgent(id: string): void {
   db.agents = db.agents.filter((a) => a.id !== id)
   save()
-  rmSync(agentDir(id), { recursive: true, force: true })
+  try {
+    rmSync(agentDir(id), { recursive: true, force: true })
+  } catch (err) {
+    // container-owned files can block host deletion — callers run
+    // removeAgentStorage (docker.ts) first; the record removal must not fail
+    console.warn('agent data dir left behind:', agentDir(id), (err as Error).message)
+  }
 }

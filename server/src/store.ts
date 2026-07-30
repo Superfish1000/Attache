@@ -80,6 +80,7 @@ const defaults = (): DB => ({
       groupId: '',
       pollMinutes: 0,
       createAgents: true,
+      startAgents: false,
       sendWelcomeEmails: true,
       lastRuns: [],
     },

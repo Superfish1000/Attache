@@ -4,6 +4,7 @@ import { deleteAgent } from './agents.js'
 import {
   bounceDashboard,
   removeAgentContainer,
+  removeAgentStorage,
   startAgentContainer,
   stopAgentContainer,
   writeDashboardCredsSafe,
@@ -75,6 +76,7 @@ export async function deleteUser(id: string): Promise<void> {
     } catch {
       // docker unavailable — agent record still goes away
     }
+    await removeAgentStorage(agent)
     deleteAgent(agent.id)
   }
   destroyUserSessions(id)

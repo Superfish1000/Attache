@@ -19,6 +19,7 @@ import {
   readAgentCron,
   readAgentFileViaDocker,
   readMcpLoginLog,
+  removeAgentStorage,
   writeAgentCron,
   writeAgentFileViaDocker,
   removeAgentContainer,
@@ -145,11 +146,13 @@ export default async function agentRoutes(app: FastifyInstance) {
     if (!requireAdmin(req, reply)) return reply
     const { id } = req.params as { id: string }
     if (!db.agents.some((a) => a.id === id)) return reply.code(404).send({ error: 'agent not found' })
+    const agent = db.agents.find((a) => a.id === id)!
     try {
       await removeAgentContainer(id)
     } catch {
       // docker unavailable — record still goes away
     }
+    await removeAgentStorage(agent)
     deleteAgent(id)
     return reply.code(204).send()
   })

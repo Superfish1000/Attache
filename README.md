@@ -9,7 +9,7 @@ A self-hosted web GUI for running **containerized AI agents** — one container 
 - **Agent management** — start/stop/regenerate containers, live logs, editable soul/memory/config files, per-agent cron jobs, auto-assigned host ports.
 - **Chat** — streaming chat with any agent you own, proxied through the agent's warm OpenAI-compatible gateway (no cold start per message).
 - **Hermes dashboard** — one-click access to each agent's own web dashboard, automatically secured with the owner's Attaché login (hash-only provisioning — no plaintext at rest).
-- **Office 365 auto-sync** — poll an Entra group on a schedule: new members get a user (and optionally an agent + welcome email), members who leave are disabled, returners are re-enabled. Admins are never auto-disabled.
+- **Office 365 auto-sync** — poll an Entra group on a schedule: new members get a user (and optionally an agent — auto-started if you choose — plus a welcome email), members who leave are disabled, returners are re-enabled. Admins are never auto-disabled.
 - **Email onboarding (SMTP)** — new users get a set-password link by email; no passwords ever travel in mail.
 - **Password reset** — self-serve **Forgot password?** on the login screen, plus an admin **Email link** re-send on the Users page. Links are single-use and expire.
 - **Restart button** — restart the server from Settings → Updates after an update, no shell needed.

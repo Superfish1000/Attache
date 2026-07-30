@@ -12,6 +12,7 @@ export default function Integrations() {
   const [groupId, setGroupId] = useState('')
   const [pollMinutes, setPollMinutes] = useState('0')
   const [createAgents, setCreateAgents] = useState(true)
+  const [startAgents, setStartAgents] = useState(false)
   const [sendWelcomeEmails, setSendWelcomeEmails] = useState(true)
   const [members, setMembers] = useState<O365Member[] | null>(null)
   const [testResult, setTestResult] = useState<{ groupName: string; memberCount: number } | null>(null)
@@ -30,6 +31,7 @@ export default function Integrations() {
         setGroupId(o.groupId)
         setPollMinutes(String(o.pollMinutes))
         setCreateAgents(o.createAgents)
+        setStartAgents(o.startAgents)
         setSendWelcomeEmails(o.sendWelcomeEmails)
       })
       .catch((e: Error) => setErr(e.message))
@@ -52,6 +54,7 @@ export default function Integrations() {
         groupId,
         pollMinutes: pm,
         createAgents,
+        startAgents,
         sendWelcomeEmails,
       })
       setView(s)
@@ -280,6 +283,18 @@ export default function Integrations() {
             onChange={(e) => setCreateAgents(e.target.checked)}
           />
           <span>Create an agent for each new user</span>
+        </label>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={startAgents}
+            disabled={!createAgents}
+            onChange={(e) => setStartAgents(e.target.checked)}
+          />
+          <span>
+            Start the agent's container immediately{' '}
+            <span className="muted">(first start pulls the image — can take minutes)</span>
+          </span>
         </label>
         <label className="check-row">
           <input

@@ -1,6 +1,7 @@
 import { db, save } from './store.js'
 import { createAgent } from './agents.js'
 import { createUser, setUserDisabled } from './users.js'
+import { startAgentContainer } from './docker.js'
 import { diffMembership } from './o365-diff.js'
 import { emailConfigured, sendSetPasswordEmail } from './mailer.js'
 import type { SyncRun } from './types.js'
@@ -111,7 +112,18 @@ export async function runFullSync(): Promise<SyncRun> {
       const email = m.mail ?? m.userPrincipalName
       try {
         const user = createUser({ name: m.displayName ?? email, email, source: 'o365', o365Id: m.id })
-        if (db.settings.o365.createAgents) createAgent(user.id)
+        if (db.settings.o365.createAgents) {
+          const agent = createAgent(user.id)
+          if (db.settings.o365.startAgents) {
+            try {
+              await startAgentContainer(agent)
+            } catch (err) {
+              // first start can pull a large image or hit a stopped daemon —
+              // the agent exists either way; start it manually from its page
+              console.warn('auto-start failed for new agent', agent.id, (err as Error).message)
+            }
+          }
+        }
         run.created++
         if (db.settings.o365.sendWelcomeEmails) {
           if (emailConfigured()) {
