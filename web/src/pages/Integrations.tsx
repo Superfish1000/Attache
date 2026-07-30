@@ -37,15 +37,25 @@ export default function Integrations() {
       .catch((e: Error) => setErr(e.message))
   }, [])
 
-  const saveSettings = async () => {
+  // unsaved form changes — drives the Save-and-Sync button label and hint
+  const dirty = view
+    ? tenantId !== view.tenantId ||
+      clientId !== view.clientId ||
+      groupId !== view.groupId ||
+      clientSecret !== '' ||
+      pollMinutes.trim() !== String(view.pollMinutes) ||
+      createAgents !== view.createAgents ||
+      startAgents !== view.startAgents ||
+      sendWelcomeEmails !== view.sendWelcomeEmails
+    : false
+
+  /** Validates + saves the form. Returns the fresh view, or null with the error surfaced. */
+  const persistSettings = async (): Promise<O365SettingsView | null> => {
     const pm = pollMinutes.trim() === '' ? 0 : Number(pollMinutes)
     if (!Number.isInteger(pm) || pm < 0 || pm > 10080) {
       setErr('Poll interval must be a whole number of minutes (0–10080)')
-      return
+      return null
     }
-    setBusy(true)
-    setErr('')
-    setNote('')
     try {
       const s = await api.o365.saveSettings({
         tenantId,
@@ -61,12 +71,19 @@ export default function Integrations() {
       setClientSecret('')
       setTestResult(null)
       setMembers(null)
-      setNote('Saved')
+      return s
     } catch (e) {
       setErr((e as Error).message)
-    } finally {
-      setBusy(false)
+      return null
     }
+  }
+
+  const saveSettings = async () => {
+    setBusy(true)
+    setErr('')
+    setNote('')
+    if (await persistSettings()) setNote('Saved')
+    setBusy(false)
   }
 
   const test = async () => {
@@ -98,8 +115,11 @@ export default function Integrations() {
   const sync = async () => {
     setBusy(true)
     setErr('')
+    setNote('')
     setSyncResult(null)
     try {
+      // unsaved edits are saved first — the sync always runs what you see
+      if (dirty && !(await persistSettings())) return
       setSyncResult(await api.o365.sync())
       setView(await api.o365.settings())
     } catch (e) {
@@ -176,7 +196,8 @@ export default function Integrations() {
             Preview members
           </button>
           <span className="muted" style={{ alignSelf: 'center' }}>
-            Tests use saved values — press Save settings (step 3) after changing anything above.
+            Tests use saved values — press Save settings (bottom of the page) after changing
+            anything above.
           </span>
         </div>
         {testResult && (
@@ -218,14 +239,10 @@ export default function Integrations() {
           <input value={pollMinutes} onChange={(e) => setPollMinutes(e.target.value)} />
         </div>
         <div className="btn-row">
-          <button className="btn btn-primary" disabled={busy} onClick={saveSettings}>
-            Save settings
-          </button>
-          <button className="btn" disabled={busy || !view?.configured} onClick={sync}>
-            Sync now
+          <button className="btn" disabled={busy || (!view?.configured && !dirty)} onClick={sync}>
+            {dirty ? 'Save and Sync' : 'Sync now'}
           </button>
         </div>
-        {note && <p className="ok-note">{note}</p>}
         <p className="muted">
           New members get a user account (the agent and set-password email are configured in step
           4). Members who leave are disabled — never deleted, never admins. Last sync:{' '}
@@ -326,7 +343,21 @@ export default function Integrations() {
           </p>
         )}
       </div>
-      <p className="muted">These options save with the Save settings button in step 3.</p>
+      <div className="btn-row">
+        <button className="btn btn-primary" disabled={busy} onClick={saveSettings}>
+          Save settings
+        </button>
+        {note && (
+          <span className="ok-note" style={{ alignSelf: 'center' }}>
+            {note}
+          </span>
+        )}
+        {dirty && !note && (
+          <span className="muted" style={{ alignSelf: 'center' }}>
+            unsaved changes
+          </span>
+        )}
+      </div>
     </>
   )
 }
