@@ -7,7 +7,6 @@ import Users from './pages/Users'
 import Agents from './pages/Agents'
 import AgentDetail from './pages/AgentDetail'
 import Integrations from './pages/Integrations'
-import Tools from './pages/Tools'
 import Settings from './pages/Settings'
 import Containers from './pages/Containers'
 import Chat from './pages/Chat'
@@ -56,7 +55,7 @@ function Shell() {
           <NavLink to="/agents">{admin ? 'Agents' : 'My Agents'}</NavLink>
           {admin && <NavLink to="/containers">Containers</NavLink>}
           {admin && <NavLink to="/integrations">Integrations</NavLink>}
-          <NavLink to="/tools">Tools</NavLink>
+          {/* Tools (MCP library) hidden until it's more than a stub — page kept at pages/Tools.tsx */}
           {admin && <NavLink to="/settings">Settings</NavLink>}
         </nav>
         <div className="userbox">
@@ -100,7 +99,6 @@ function Shell() {
               </AdminRoute>
             }
           />
-          <Route path="/tools" element={<Tools />} />
           <Route
             path="/settings"
             element={
