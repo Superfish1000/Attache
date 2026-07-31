@@ -295,7 +295,6 @@ export async function writeDashboardCredsSafe(agent: Agent, owner: User): Promis
   const existing = await readAgentFileViaDocker(agent, '.env')
   if (existing === null) return false
   const merged = mergeDashboardEnv(existing, owner)
-  if (merged === null) return true
   return writeAgentFileViaDocker(agent, '.env', merged)
 }
 
@@ -395,6 +394,12 @@ export async function startAgentContainer(agent: Agent): Promise<ContainerInfo> 
   })
   await container.start()
   scheduleMountGroupFix(agent)
+  // re-provision dashboard creds on every start (real hash or placeholder) —
+  // restart is the universal self-heal for a credless/crash-looping dashboard,
+  // and post-start both write paths work (host fs or docker for owned dirs).
+  // hermes reads .env minutes later during its init, so this always lands first.
+  const owner = db.users.find((u) => u.id === agent.userId)
+  if (owner) await writeDashboardCredsSafe(agent, owner)
   return containerInfo(agent.id)
 }
 

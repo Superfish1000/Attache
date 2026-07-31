@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { dirname, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { AGENTS_DIR, db, newId, save } from './store.js'
+import { hermesHashPassword } from './auth.js'
 import type { Agent, AgentConfig, ContainerDef, ContainerFileDef, User } from './types.js'
 
 /** Sequential free host ports starting at settings.docker.portRangeStart. */
@@ -139,9 +140,15 @@ export function upsertAgentEnv(agentId: string, entries: Record<string, string>)
  * scrypt hash — no plaintext at rest. The per-agent session-signing secret
  * is generated once and preserved so dashboard sessions survive restarts.
  * Other `.env` lines are left untouched.
+ *
+ * Owners without a password yet (onboarding via emailed set-password link)
+ * get a PLACEHOLDER credential: the hash of a random throwaway password
+ * nobody knows. Hermes' dashboard needs an auth provider to bind at all on
+ * non-loopback — without one it crash-loops under s6 — so this lets it come
+ * up (rejecting every login) until the real hash lands on password set.
  */
-export function mergeDashboardEnv(existing: string, owner: User): string | null {
-  if (!owner.dashboardHash) return null
+export function mergeDashboardEnv(existing: string, owner: User): string {
+  const hash = owner.dashboardHash ?? hermesHashPassword(randomBytes(32).toString('hex'))
   const lines = existing.split(/\r?\n/)
   const keep = lines.filter(
     (l) => l.trim() !== '' && !l.startsWith('HERMES_DASHBOARD_BASIC_AUTH_'),
@@ -153,7 +160,7 @@ export function mergeDashboardEnv(existing: string, owner: User): string | null 
     .join('=')
   keep.push(
     `HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${owner.email}`,
-    `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=${owner.dashboardHash}`,
+    `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=${hash}`,
     `HERMES_DASHBOARD_BASIC_AUTH_SECRET=${existingSecret || randomBytes(32).toString('hex')}`,
   )
   return keep.join('\n') + '\n'
@@ -163,7 +170,6 @@ export function writeDashboardCreds(agent: Agent, owner: User): void {
   const envPath = join(agentDir(agent.id), '.env')
   const existing = existsSync(envPath) ? readFileSync(envPath, 'utf8') : ''
   const merged = mergeDashboardEnv(existing, owner)
-  if (merged === null) return
   mkdirSync(agentDir(agent.id), { recursive: true })
   writeFileSync(envPath, merged)
 }
