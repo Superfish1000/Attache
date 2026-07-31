@@ -101,6 +101,15 @@ A true single sign-on covering both tools isn't possible — the MCP server and 
 mkdir -p /opt/data/m365/logs /opt/data/.ms-365-mcp-server /opt/data/.config && chown -R hermes /opt/data/m365 /opt/data/.ms-365-mcp-server /opt/data/.config 2>/dev/null; runuser -u hermes -- env HOME=/opt/data MS365_MCP_ORG_MODE=true MS365_MCP_EXPECTED_USERNAME={{OWNER_EMAIL}} MS365_MCP_TOKEN_CACHE_PATH=/opt/data/m365/token-cache.json MS365_MCP_SELECTED_ACCOUNT_PATH=/opt/data/m365/selected-account.json MS365_MCP_LOG_DIR=/opt/data/m365/logs ms-365-mcp-server --login --org-mode > {{LOG}} 2>&1; echo "--- Microsoft 365 sign-in finished. Teams CLI sign-in starting — press Sign-in status for the second code ---" >> {{LOG}}; runuser -u hermes -- env HOME=/opt/data TEAMS_NO_INTERACTIVE=1 teams login --device-code -y --disable-auto-update >> {{LOG}} 2>&1
 ```
 
+#### Letting standard users sign in (admin consent)
+
+The MCP server signs users in through its own multi-tenant Azure app (client ID `084a3e9f-a9f4-43f7-89f9-d229cf97853e`). In most org tenants, standard users can't consent to third-party apps, so their sign-in stops at Microsoft's **"Need admin approval"** screen. Two ways out:
+
+1. **One-click tenant consent** (fastest): a tenant admin opens
+   `https://login.microsoftonline.com/<tenant-id>/adminconsent?client_id=084a3e9f-a9f4-43f7-89f9-d229cf97853e`
+   and accepts. All users can then complete the device-code sign-in. Trade-off: you're granting a third-party app's delegated permissions tenant-wide.
+2. **Bring your own app registration** (recommended for orgs): create a single-tenant app in Entra, set *Authentication → Allow public client flows* = **Yes**, add the **delegated** Graph permissions for the toolsets you use (`User.Read`, `offline_access`, `Mail.ReadWrite`, `Calendars.ReadWrite`, `Files.ReadWrite.All`, …) and press *Grant admin consent*. Then add `MS365_MCP_CLIENT_ID=<your-app-id> MS365_MCP_TENANT_ID=<tenant-id>` to **both** the ms365 row's extra args (inside the single `--env` list) and the sign-in command's env block, and re-provision. Users already signed in under the default app must sign in once more — token caches are per-app.
+
 Flow for the owner: press **MCP sign-in** → complete the first device code (Microsoft 365) → press **Sign-in status** → the Teams CLI's second code appears → complete it. Both token caches live in the agent's data dir (`m365/` and `.config/teams-cli/` — the CLI resolves its config under `HOME`), so they survive regenerates. `TEAMS_NO_INTERACTIVE=1` and `-y` keep the CLI from waiting on prompts that can't be answered in a detached shell.
 
 - One definition is the **default** for new agents; agents can be switched between definitions later (their file list follows).
