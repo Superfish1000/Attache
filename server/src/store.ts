@@ -81,6 +81,7 @@ const defaults = (): DB => ({
       pollMinutes: 0,
       createAgents: true,
       startAgents: false,
+      provisionMcp: true,
       sendWelcomeEmails: true,
       lastRuns: [],
     },

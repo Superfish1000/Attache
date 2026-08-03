@@ -126,6 +126,7 @@ export interface O365SettingsView {
   pollMinutes: number
   createAgents: boolean
   startAgents: boolean
+  provisionMcp: boolean
   sendWelcomeEmails: boolean
   lastRuns: SyncRun[]
 }

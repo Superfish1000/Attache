@@ -13,6 +13,7 @@ export default function Integrations() {
   const [pollMinutes, setPollMinutes] = useState('0')
   const [createAgents, setCreateAgents] = useState(true)
   const [startAgents, setStartAgents] = useState(false)
+  const [provisionMcp, setProvisionMcp] = useState(true)
   const [sendWelcomeEmails, setSendWelcomeEmails] = useState(true)
   const [members, setMembers] = useState<O365Member[] | null>(null)
   const [testResult, setTestResult] = useState<{ groupName: string; memberCount: number } | null>(null)
@@ -32,6 +33,7 @@ export default function Integrations() {
         setPollMinutes(String(o.pollMinutes))
         setCreateAgents(o.createAgents)
         setStartAgents(o.startAgents)
+        setProvisionMcp(o.provisionMcp)
         setSendWelcomeEmails(o.sendWelcomeEmails)
       })
       .catch((e: Error) => setErr(e.message))
@@ -46,6 +48,7 @@ export default function Integrations() {
       pollMinutes.trim() !== String(view.pollMinutes) ||
       createAgents !== view.createAgents ||
       startAgents !== view.startAgents ||
+      provisionMcp !== view.provisionMcp ||
       sendWelcomeEmails !== view.sendWelcomeEmails
     : false
 
@@ -65,6 +68,7 @@ export default function Integrations() {
         pollMinutes: pm,
         createAgents,
         startAgents,
+        provisionMcp,
         sendWelcomeEmails,
       })
       setView(s)
@@ -311,6 +315,18 @@ export default function Integrations() {
           <span>
             Start the agent's container immediately{' '}
             <span className="muted">(first start pulls the image — can take minutes)</span>
+          </span>
+        </label>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={provisionMcp}
+            disabled={!createAgents || !startAgents}
+            onChange={(e) => setProvisionMcp(e.target.checked)}
+          />
+          <span>
+            Run the definition's MCP provisioning script{' '}
+            <span className="muted">(needs the container running — requires the option above)</span>
           </span>
         </label>
         <label className="check-row">

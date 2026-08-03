@@ -1,7 +1,7 @@
 import { db, save } from './store.js'
 import { createAgent } from './agents.js'
 import { createUser, setUserDisabled } from './users.js'
-import { startAgentContainer } from './docker.js'
+import { provisionMcpServers, startAgentContainer } from './docker.js'
 import { diffMembership } from './o365-diff.js'
 import { emailConfigured, sendSetPasswordEmail } from './mailer.js'
 import type { SyncRun } from './types.js'
@@ -115,12 +115,23 @@ export async function runFullSync(): Promise<SyncRun> {
         if (db.settings.o365.createAgents) {
           const agent = createAgent(user.id)
           if (db.settings.o365.startAgents) {
+            let started = false
             try {
               await startAgentContainer(agent)
+              started = true
             } catch (err) {
               // first start can pull a large image or hit a stopped daemon —
               // the agent exists either way; start it manually from its page
               console.warn('auto-start failed for new agent', agent.id, (err as Error).message)
+            }
+            // provisioning execs into the running container — meaningless (and
+            // unreachable) if the start above didn't actually succeed
+            if (started && db.settings.o365.provisionMcp) {
+              try {
+                await provisionMcpServers(agent)
+              } catch (err) {
+                console.warn('MCP provisioning failed for new agent', agent.id, (err as Error).message)
+              }
             }
           }
         }

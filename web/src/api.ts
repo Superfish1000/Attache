@@ -121,6 +121,7 @@ export const api = {
       pollMinutes?: number
       createAgents?: boolean
       startAgents?: boolean
+      provisionMcp?: boolean
       sendWelcomeEmails?: boolean
     }) => req<O365SettingsView>('/api/o365/settings', json('PUT', s)),
     preview: () => req<O365Member[]>('/api/o365/preview'),
