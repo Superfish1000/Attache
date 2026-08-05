@@ -13,7 +13,7 @@ A self-hosted web GUI for running **containerized AI agents** — one container 
 - **Email onboarding (SMTP)** — new users get a set-password link by email; no passwords ever travel in mail.
 - **Password reset** — self-serve **Forgot password?** on the login screen, plus an admin **Email link** re-send on the Users page. Links are single-use and expire.
 - **Restart button** — restart the server from Settings → Updates after an update, no shell needed.
-- **MCP tool library** — stub today; planned shared tool server for all agents.
+- **MCP tool library** — stub today (`/api/mcp/status`); planned shared tool server for all agents. Its page is hidden from the nav until it's more than a stub.
 
 ## Stack
 
@@ -196,8 +196,8 @@ Sync users from an Entra (Azure AD) group. The page walks through it:
 
 1. **App registration** — paste the tenant ID, client ID, and client secret of an app registration with **application** permissions `GroupMember.Read.All` + `User.Read.All` (client-credentials flow). Once tenant + client IDs are entered, the page shows a one-click **grant admin consent** link straight into Microsoft's consent screen.
 2. **Group** — paste the group's object ID, then **Test connection** / **Preview members** to sanity-check (tests use *saved* values — save after changing credentials).
-3. **Polling** — poll interval in minutes (**0 = off**). Changes apply without a restart, and a sync also runs ~30 s after server boot. **Sync now** runs one on demand. A run-history table shows recent runs: members, created, disabled, re-enabled, email failures, error.
-4. **New member actions** — checkboxes for what happens beyond the user account itself: **create an agent** for each new user, and/or **email a set-password link** (requires SMTP *and* the Public GUI address — the page warns if either is missing).
+3. **Polling** — poll interval in minutes (**0 = off**). Changes apply without a restart, and a sync also runs ~30 s after server boot. The button reads **Sync now** when the form matches what's saved, or **Save and Sync** when you've made unsaved changes (it saves first, then syncs exactly what's on screen). A run-history table shows recent runs: members, created, disabled, re-enabled, email failures, error.
+4. **New member actions** — checkboxes for what happens beyond the user account itself, each gated on the one above it: **create an agent** for each new user → **start its container immediately** (first start pulls the image) → **run the definition's MCP provisioning script** (needs the container running) — and independently, **email a set-password link** (requires SMTP *and* the Public GUI address — the page warns if either is missing). **Save settings** lives at the bottom of the page, below all four steps.
 
 Sync semantics are **disable, don't delete**: members who leave the group are disabled (sessions revoked, containers stopped), members who return are re-enabled, and admins are never auto-disabled. **Important:** for O365-synced users, group membership is the source of truth — manually disabling a user who is still in the group gets reverted at the next poll. To keep someone out, remove them from the group instead.
 
@@ -224,7 +224,7 @@ Creates the account as an admin, or — if the email already exists — promotes
 | Symptom | Cause / fix |
 |---|---|
 | "gateway unreachable" in Chat right after starting a container | Gateway boots in ~2–4 min. Wait, then retry. |
-| Dashboard button 404s / connection refused | Dashboard takes up to ~4 min after container start. Also requires the owner to have an Attaché password. |
+| Dashboard button 404s / connection refused | Dashboard takes up to ~4 min after container start. Owners without an Attaché password yet still get a working (but unusable) dashboard bind — a placeholder credential nobody knows — so it's never the crash-loop cause; once they set their password the real credential lands automatically. |
 | `can't start new thread` in agent logs; chat/dashboard never come up | Old Docker daemon seccomp vs `clone3` — see *Old Docker daemons* above. |
 | Container features all say "docker offline" | Start Docker Desktop / the daemon. The GUI degrades gracefully meanwhile. |
 | GUI dev server won't bind | Windows excluded-port ranges — `netsh interface ipv4 show excludedportrange protocol=tcp`, then change ports in `.claude/launch.json` / vite config. |
@@ -232,6 +232,7 @@ Creates the account as an admin, or — if the email already exists — promotes
 | Update blocked: "working tree has local changes" | The error names the files. `git stash` (or `git checkout -- <files>`) in the install dir, then retry. Lockfile-only churn from `npm install` is reset automatically. |
 | Set-password emails not arriving | Settings → Email → **Send test email** to prove SMTP; the **Public GUI address** (Settings → Server) must be set for links; check the run history's email-failures column on the Integrations page. |
 | Disabled user came back (re-enabled) | They're still in the O365 group — group membership is the source of truth for synced users. Remove them from the group instead. |
+| Deleting an agent fails ("permission denied" rmdir) | Files the runtime created (e.g. `.local/share`) can block a plain host delete on Linux. Deletion now falls back to clearing the dir as root through a throwaway container when the host can't — should self-resolve; if it doesn't, the leftover path is logged server-side. |
 | Agent files unreadable on a Linux host ("permission denied" / accessed-through-container notes) | The runtime chowns its data dir to its internal user (e.g. UID 10000) at container start. Attaché handles this two ways: (1) it transparently reads **and writes** through Docker while the container runs, and (2) ~20s–2min after each container start it re-groups the data dir to its own group (`g+rwX`, setgid dirs — owner stays the runtime's user), restoring normal on-disk access for the account running Attaché. Files the runtime creates between fixes are group-readable immediately and group-writable after the next start. For other accounts or stronger guarantees: `sudo setfacl -R -m u:$USER:rwX -m d:u:$USER:rwX data/agents`. |
 
 ## Security notes
@@ -242,7 +243,7 @@ Creates the account as an admin, or — if the email already exists — promotes
 
 ## Roadmap
 
-- Shared tool library served over MCP (currently a stub at `/api/mcp/status` and the Tools page)
+- Shared tool library served over MCP (currently a stub at `/api/mcp/status`; the Tools page is hidden from the nav until this is more than a stub — `web/src/pages/Tools.tsx` still exists, ready to re-link)
 - SQLite store swap (interface already isolated in `server/src/store.ts`)
 - Run-as-a-service install (survive reboots without a dev session)
 - Per-user dashboard OAuth instead of basic auth
