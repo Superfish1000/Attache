@@ -3,3 +3,5 @@ data/
 web/dist/
 *.log
 .env
+.claude/
+docs/superpowers/
