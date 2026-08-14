@@ -9,12 +9,14 @@ import {
   McpTemplatesHelp,
   normalizeImageRef,
 } from '../components'
+import McpToolContainers from './McpToolContainers'
 import type { Agent, ContainerDef, ContainerFileDef, McpServerDef } from '../types'
 
 export default function Containers() {
   const [defs, setDefs] = useState<ContainerDef[]>([])
   const [defaultId, setDefaultId] = useState('')
   const [agents, setAgents] = useState<Agent[]>([])
+  const [toolAddresses, setToolAddresses] = useState<string[]>([])
   const [selId, setSelId] = useState('')
   const [name, setName] = useState('')
   const [image, setImage] = useState('')
@@ -70,6 +72,16 @@ export default function Containers() {
           }
         })
         .catch((e: Error) => setErr(e.message))
+      api.mcpTools
+        .list()
+        .then((res) =>
+          setToolAddresses(
+            res.tools
+              .filter((t) => t.networkAlias && t.containerPorts.length > 0)
+              .map((t) => `http://${t.networkAlias}:${t.containerPorts[0]}`),
+          ),
+        )
+        .catch(() => undefined)
     },
     [selId, select],
   )
@@ -208,11 +220,16 @@ export default function Containers() {
     <>
       <h1>Containers</h1>
       <p className="subtitle">
-        Reusable container setups — image, runtime defaults, and the behavior files agents expose
+        Two kinds of containers: agent runtimes (one per user) and shared MCP tool servers (one
+        instance, reachable by any agent)
       </p>
       <ErrorBanner message={err} onDismiss={() => setErr('')} />
       {note && <div className="panel ok-note">{note}</div>}
 
+      <h2>Agent containers</h2>
+      <p className="muted">
+        Reusable container setups — image, runtime defaults, and the behavior files agents expose
+      </p>
       <div className="panel">
         <table>
           <thead>
@@ -423,6 +440,11 @@ export default function Containers() {
               runtime ingests one server — <span className="mono">{'{{NAME}}'}</span> and{' '}
               <span className="mono">{'{{URL}}'}</span> are substituted per server.
             </p>
+            <datalist id="mcp-tool-addresses">
+              {toolAddresses.map((a) => (
+                <option key={a} value={a} />
+              ))}
+            </datalist>
             {mcpServers.map((s, i) => (
               <div key={i} style={{ marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
                 <div className="form-row">
@@ -441,6 +463,7 @@ export default function Containers() {
                       onChange={(e) => updMcp(i, { url: e.target.value })}
                       placeholder="https://example.com/mcp"
                       style={{ width: '100%' }}
+                      list="mcp-tool-addresses"
                     />
                   </div>
                   <div className="field">
@@ -523,6 +546,8 @@ export default function Containers() {
           </div>
         </>
       )}
+
+      <McpToolContainers />
     </>
   )
 }
