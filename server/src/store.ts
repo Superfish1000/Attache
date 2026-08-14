@@ -2,17 +2,19 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import type { Agent, ContainerDef, McpServerDef, ResetToken, Session, Settings, User } from './types.js'
+import type { Agent, ContainerDef, McpServerDef, McpToolContainerDef, ResetToken, Session, Settings, User } from './types.js'
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 export const DATA_DIR = process.env.ATTACHE_DATA_DIR ?? join(ROOT, 'data')
 export const AGENTS_DIR = join(DATA_DIR, 'agents')
+export const MCP_TOOLS_DIR = join(DATA_DIR, 'mcp-tools')
 const DB_FILE = join(DATA_DIR, 'db.json')
 
 interface DB {
   users: User[]
   agents: Agent[]
   containers: ContainerDef[]
+  mcpTools: McpToolContainerDef[]
   sessions: Session[]
   settings: Settings
   resetTokens: ResetToken[]
@@ -70,6 +72,7 @@ const defaults = (): DB => ({
   users: [],
   agents: [],
   containers: [],
+  mcpTools: [],
   sessions: [],
   resetTokens: [],
   settings: {
@@ -182,6 +185,16 @@ function load(): { db: DB; migrated: boolean } {
       }),
     ),
     containers,
+    // field backfill for tool container defs saved before newer fields existed
+    mcpTools: (raw.mcpTools ?? []).map((t: Partial<McpToolContainerDef> & { id: string; name: string; networkAlias: string; image: string; dockerfile: string; createdAt: string }) => ({
+      ...t,
+      hostPorts: t.hostPorts ?? {},
+      publishToHost: t.publishToHost ?? false,
+      mountPath: t.mountPath ?? '',
+      env: t.env ?? {},
+      command: t.command ?? [],
+      containerPorts: t.containerPorts ?? [],
+    })),
     sessions: raw.sessions ?? [],
     // prune dead reset tokens at boot
     resetTokens: ((raw.resetTokens ?? []) as ResetToken[]).filter(

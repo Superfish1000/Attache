@@ -6,9 +6,10 @@ import { hermesHashPassword } from './auth.js'
 import type { Agent, AgentConfig, ContainerDef, ContainerFileDef, User } from './types.js'
 
 /** Sequential free host ports starting at settings.docker.portRangeStart. */
-function nextFreeHostPorts(count: number): number[] {
+export function nextFreeHostPorts(count: number): number[] {
   const used = new Set<number>()
   for (const a of db.agents) for (const p of Object.values(a.config.ports)) used.add(p)
+  for (const t of db.mcpTools) for (const p of Object.values(t.hostPorts)) used.add(p)
   const out: number[] = []
   let candidate = db.settings.docker.portRangeStart
   while (out.length < count) {

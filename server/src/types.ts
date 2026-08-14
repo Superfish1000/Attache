@@ -117,6 +117,30 @@ export interface ContainerDef {
   createdAt: string
 }
 
+/** A standalone container running MCP server software — decoupled from any agent. Definition IS the instance: one container per definition, admin-managed lifecycle. */
+export interface McpToolContainerDef {
+  id: string
+  name: string
+  /** DNS-safe hostname other containers reach this one by on the shared Attaché network (e.g. "kb-search" -> http://kb-search:8080/...). Must be unique across all tool defs. Lowercase letters/digits/hyphens, can't start/end with a hyphen. */
+  networkAlias: string
+  image: string
+  command: string[]
+  env: Record<string, string>
+  /** Ports the server listens on inside the container. */
+  containerPorts: number[]
+  /** containerPort -> hostPort; only populated when publishToHost is true. */
+  hostPorts: Record<string, number>
+  /** When true, also publish containerPorts to auto-assigned host ports for direct/admin access. Off by default — agents reach the container via networkAlias on the shared network, no host exposure needed. */
+  publishToHost: boolean
+  /** Container path for persistent state; empty string = no data mount. */
+  mountPath: string
+  memoryMb?: number
+  cpus?: number
+  /** Optional Dockerfile; built the same way container definitions are (native build, falls back to run+commit emulation on daemons whose seccomp breaks builds). */
+  dockerfile: string
+  createdAt: string
+}
+
 export interface Agent {
   id: string
   userId: string
