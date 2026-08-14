@@ -116,6 +116,18 @@ Flow for the owner: press **MCP sign-in** → complete the first device code (Mi
 
 The stock Hermes definition exposes: Soul (`SOUL.md`), Memory (`memories/MEMORY.md`), User profile (`memories/USER.md`), Agents (`AGENTS.md`), Tools (`TOOLS.md`), Context (`.hermes.md`).
 
+### MCP tool containers
+
+Below the agent-container-definitions table on the same **Containers** page, admins can also deploy standalone containers that just run MCP server software — decoupled from any agent. A definition *is* the instance here (one container per definition, not one per user), with a simple lifecycle: **New tool container** → name it, set a **network alias** and image (or **Build from Dockerfile**, the same either/or toggle and build path — including the run+commit fallback on old daemons — as agent definitions) → **Save definition** → **Start**. **Stop** / **Regenerate** (remove + recreate + start, so image/env/port changes apply) / **View logs** work the same way as agent containers.
+
+**Shared network.** Every agent container and every tool container automatically joins a Docker bridge network named `attache-net`. Docker's built-in DNS makes a tool container reachable from any agent at `http://<network alias>:<port>` — no host port needed. Agent containers created before this network existed get attached to it live (a `docker network connect`, not a rebuild) the next time they start, or automatically at Attaché's next boot.
+
+**Using one.** Build/start the tool container here, then note the **Reachable at** address shown in its definition panel once a network alias and at least one container port are set (`http://<alias>:<port>`). Go to an agent's container definition → **MCP servers** section and paste that address into a server row's **URL** field — the field also offers known tool addresses via autocomplete. Nothing about the existing MCP-server-provisioning mechanism changes; a tool container's address is just another external MCP URL.
+
+**Security note.** The shared network has no per-agent ACLs — any agent container can reach any tool container on it. That matches the "shared tool library" intent, but only deploy tool containers you're comfortable *all* agents (and their owners) reaching.
+
+**Optional host publishing.** An **Also publish to a host port** checkbox (off by default) additionally maps a tool container's ports to auto-assigned host ports, for direct/admin testing (e.g. `curl` from the host). Agents never need this — they reach the container over `attache-net`.
+
 ### Agents
 
 Each agent owns a data dir (`data/agents/<id>/`) mounted into its container — souls and memories edited in the GUI are the same files the agent reads and writes. The agent page has:
@@ -227,6 +239,7 @@ Creates the account as an admin, or — if the email already exists — promotes
 | Dashboard button 404s / connection refused | Dashboard takes up to ~4 min after container start. Owners without an Attaché password yet still get a working (but unusable) dashboard bind — a placeholder credential nobody knows — so it's never the crash-loop cause; once they set their password the real credential lands automatically. |
 | `can't start new thread` in agent logs; chat/dashboard never come up | Old Docker daemon seccomp vs `clone3` — see *Old Docker daemons* above. |
 | Container features all say "docker offline" | Start Docker Desktop / the daemon. The GUI degrades gracefully meanwhile. |
+| Agent can't reach a tool container by its network alias | The agent's container predates `attache-net`. Stop/Start it (or wait for Attaché's next restart) to get retrofitted onto the network. |
 | GUI dev server won't bind | Windows excluded-port ranges — `netsh interface ipv4 show excludedportrange protocol=tcp`, then change ports in `.claude/launch.json` / vite config. |
 | Slow replies despite warm gateway | The model does the thinking — switch the agent's model (e.g. `hermes config set model.default anthropic/claude-sonnet-5` inside the container) for faster turnaround. |
 | Update blocked: "working tree has local changes" | The error names the files. `git stash` (or `git checkout -- <files>`) in the install dir, then retry. Lockfile-only churn from `npm install` is reset automatically. |
@@ -243,7 +256,7 @@ Creates the account as an admin, or — if the email already exists — promotes
 
 ## Roadmap
 
-- Shared tool library served over MCP (currently a stub at `/api/mcp/status`; the Tools page is hidden from the nav until this is more than a stub — `web/src/pages/Tools.tsx` still exists, ready to re-link)
+- Shared tool library served over MCP — the hosting infrastructure now ships: admins deploy/manage standalone MCP tool containers on the shared `attache-net` network and wire their addresses into any agent's MCP servers (see *Containers (admin) → MCP tool containers*). Still to build: identity-aware/multi-tenant tool logic — a tool acting **as** the specific calling agent's owner (e.g. sending mail from their mailbox), the way the M365 stdio integration does per-agent today; today's tool containers are anonymous/shared, with no per-agent identity threading. Separately, the browsable-library UI is still a stub (`/api/mcp/status`) and its Tools page stays hidden from the nav — `web/src/pages/Tools.tsx` still exists, ready to re-link
 - SQLite store swap (interface already isolated in `server/src/store.ts`)
 - Run-as-a-service install (survive reboots without a dev session)
 - Per-user dashboard OAuth instead of basic auth
