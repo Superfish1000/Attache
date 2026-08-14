@@ -15,6 +15,7 @@ import mcpRoutes from './routes/mcp.js'
 import statusRoutes from './routes/status.js'
 import settingsRoutes from './routes/settings.js'
 import containerDefRoutes from './routes/container-defs.js'
+import mcpToolRoutes from './routes/mcp-tools.js'
 import updateRoutes from './routes/update.js'
 
 const app = Fastify({ logger: true })
@@ -41,6 +42,7 @@ await app.register(o365Routes, { prefix: '/api/o365' })
 await app.register(mcpRoutes, { prefix: '/api/mcp' })
 await app.register(settingsRoutes, { prefix: '/api/settings' })
 await app.register(containerDefRoutes, { prefix: '/api/container-defs' })
+await app.register(mcpToolRoutes, { prefix: '/api/mcp-tools' })
 await app.register(updateRoutes, { prefix: '/api/update' })
 await app.register(statusRoutes, { prefix: '/api' })
 
