@@ -1,8 +1,8 @@
 import Docker from 'dockerode'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { Writable } from 'node:stream'
-import type { Agent, User } from './types.js'
+import type { Agent, McpToolContainerDef, User } from './types.js'
 import {
   CRON_FILE_RE,
   agentDir,
@@ -14,6 +14,7 @@ import {
   upsertAgentEnv,
   writeDashboardCreds,
 } from './agents.js'
+import { mcpToolDir } from './mcp-tools.js'
 import { db } from './store.js'
 
 /** Fresh handle per call so a settings change takes effect without a restart. Construction is cheap. */
@@ -38,7 +39,8 @@ export async function dockerAvailable(): Promise<boolean> {
  * the runtime made unsearchable. ~1–2s; only used when cheaper paths failed.
  */
 async function runEphemeralMount(
-  agent: Agent,
+  image: string,
+  hostDir: string,
   entrypoint: string[],
   cmd: string[],
   writable = false,
@@ -46,9 +48,9 @@ async function runEphemeralMount(
   let scratch: Docker.Container | null = null
   try {
     const docker = getDocker()
-    const bindSrc = resolve(agentDir(agent.id)).replace(/\\/g, '/')
+    const bindSrc = resolve(hostDir).replace(/\\/g, '/')
     scratch = await docker.createContainer({
-      Image: agent.config.image,
+      Image: image,
       Entrypoint: entrypoint,
       Cmd: cmd,
       HostConfig: {
@@ -77,17 +79,17 @@ async function runEphemeralMount(
 }
 
 const readViaEphemeralMount = (agent: Agent, relPath: string) =>
-  runEphemeralMount(agent, ['cat'], [`/attache-ro/${relPath}`])
+  runEphemeralMount(agent.config.image, agentDir(agent.id), ['cat'], [`/attache-ro/${relPath}`])
 
 /**
- * Deletes the agent's data dir. Host-first; when the runtime's chown blocks
- * host deletion (Linux — container-owned subdirs like .local/share), empties
- * the dir as root through a writable ephemeral mount, then removes the
- * now-empty dir host-side (only needs write on data/agents, which the host
- * account owns). Best-effort: a leftover dir is logged, never fatal.
+ * Deletes a directory that may contain container-runtime-owned files.
+ * Host-first; when the runtime's chown blocks host deletion (Linux —
+ * container-owned subdirs like .local/share), empties the dir as root
+ * through a writable ephemeral mount (via the given image), then removes
+ * the now-empty dir host-side. Best-effort: a leftover dir is logged, never
+ * fatal.
  */
-export async function removeAgentStorage(agent: Agent): Promise<void> {
-  const dir = agentDir(agent.id)
+export async function removeContainerStorage(image: string, dir: string): Promise<void> {
   if (!existsSync(dir)) return
   try {
     rmSync(dir, { recursive: true, force: true })
@@ -95,12 +97,16 @@ export async function removeAgentStorage(agent: Agent): Promise<void> {
   } catch {
     // container-owned entries — fall through to the root-powered path
   }
-  await runEphemeralMount(agent, ['find'], ['/attache-rw', '-mindepth', '1', '-delete'], true)
+  await runEphemeralMount(image, dir, ['find'], ['/attache-rw', '-mindepth', '1', '-delete'], true)
   try {
     rmSync(dir, { recursive: true, force: true })
   } catch (err) {
-    console.warn('agent data dir left behind:', dir, (err as Error).message)
+    console.warn('container data dir left behind:', dir, (err as Error).message)
   }
+}
+
+export async function removeAgentStorage(agent: Agent): Promise<void> {
+  return removeContainerStorage(agent.config.image, agentDir(agent.id))
 }
 
 /**
@@ -324,6 +330,45 @@ export async function containerInfo(agentId: string): Promise<ContainerInfo> {
   }
 }
 
+export const ATTACHE_NETWORK = 'attache-net'
+
+/** Idempotent: creates the shared bridge network Attaché containers use to reach each other by name, if it doesn't already exist. */
+async function ensureAttacheNetwork(docker: Docker): Promise<void> {
+  try {
+    await docker.getNetwork(ATTACHE_NETWORK).inspect()
+    return
+  } catch {
+    // doesn't exist — create below
+  }
+  try {
+    await docker.createNetwork({ Name: ATTACHE_NETWORK, Driver: 'bridge' })
+  } catch (err) {
+    // race: another call created it between our inspect and create — treat "already exists" as success
+    const msg = (err as Error).message ?? ''
+    if (!/already exists/i.test(msg)) throw err
+  }
+}
+
+/**
+ * Attaches a container to the shared Attaché network, optionally under one
+ * or more DNS aliases other containers can reach it by. Best-effort and
+ * idempotent: "already attached" is treated as success. No-op (logged) if
+ * Docker is unreachable — callers should not let this block a container start.
+ */
+export async function attachToNetwork(containerId: string, aliases: string[] = []): Promise<void> {
+  const docker = getDocker()
+  try {
+    await ensureAttacheNetwork(docker)
+    await docker
+      .getNetwork(ATTACHE_NETWORK)
+      .connect({ Container: containerId, EndpointConfig: aliases.length ? { Aliases: aliases } : undefined })
+  } catch (err) {
+    const msg = (err as Error).message ?? ''
+    if (/already exists in network|already attached/i.test(msg)) return
+    console.warn('attachToNetwork failed for', containerId, ':', msg)
+  }
+}
+
 async function pullIfMissing(docker: Docker, image: string): Promise<void> {
   try {
     await docker.getImage(image).inspect()
@@ -393,6 +438,7 @@ export async function startAgentContainer(agent: Agent): Promise<ContainerInfo> 
     },
   })
   await container.start()
+  void attachToNetwork(container.id).catch(() => undefined)
   scheduleMountGroupFix(agent)
   // re-provision dashboard creds on every start (real hash or placeholder) —
   // restart is the universal self-heal for a credless/crash-looping dashboard,
@@ -516,7 +562,7 @@ async function listAgentDirViaDocker(agent: Agent, relDir: string): Promise<stri
     } catch {
       // no container — ephemeral still works
     }
-    const out = await runEphemeralMount(agent, ['ls', '-1'], [`/attache-ro/${relDir}`])
+    const out = await runEphemeralMount(agent.config.image, agentDir(agent.id), ['ls', '-1'], [`/attache-ro/${relDir}`])
     return out === null ? null : out.split('\n').map((l) => l.trim()).filter(Boolean).sort()
   }
 }
@@ -661,9 +707,9 @@ export async function provisionMcpServers(agent: Agent): Promise<McpProvisionRes
 }
 
 /** Tail of container output with docker's stream-multiplex headers stripped. */
-export async function containerLogs(agentId: string, tail = 200): Promise<string> {
+async function readContainerLogs(containerName: string, tail = 200): Promise<string> {
   const buf = (await getDocker()
-    .getContainer(nameFor(agentId))
+    .getContainer(containerName)
     .logs({ stdout: true, stderr: true, tail, follow: false })) as unknown as Buffer
   if (buf.length === 0) return ''
   // multiplexed frames: [type, 0, 0, 0, len(4BE), payload]; raw output if TTY
@@ -676,6 +722,10 @@ export async function containerLogs(agentId: string, tail = 200): Promise<string
     off += 8 + len
   }
   return parts.join('')
+}
+
+export async function containerLogs(agentId: string, tail = 200): Promise<string> {
+  return readContainerLogs(nameFor(agentId), tail)
 }
 
 export async function stopAgentContainer(agentId: string): Promise<ContainerInfo> {
@@ -719,4 +769,113 @@ export async function listManagedContainers(): Promise<ManagedContainer[]> {
     status: c.Status,
     names: c.Names,
   }))
+}
+
+const toolNameFor = (id: string) => `attache-tool-${id}`
+
+export async function toolContainerInfo(id: string): Promise<ContainerInfo> {
+  try {
+    const insp = await getDocker().getContainer(toolNameFor(id)).inspect()
+    return {
+      exists: true,
+      running: insp.State.Running,
+      state: insp.State.Status,
+      containerId: insp.Id.slice(0, 12),
+      image: insp.Config.Image,
+    }
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode === 404) return { exists: false }
+    throw err
+  }
+}
+
+export async function startToolContainer(def: McpToolContainerDef): Promise<ContainerInfo> {
+  const docker = getDocker()
+  const info = await toolContainerInfo(def.id)
+  if (info.exists) {
+    try {
+      await docker.getContainer(toolNameFor(def.id)).start()
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode !== 304) throw err
+    }
+    await attachToNetwork((await docker.getContainer(toolNameFor(def.id)).inspect()).Id, [def.networkAlias])
+    return toolContainerInfo(def.id)
+  }
+  await pullIfMissing(docker, def.image)
+  const exposed: Record<string, object> = {}
+  const bindings: Record<string, Array<{ HostPort: string }>> = {}
+  for (const cp of def.containerPorts) {
+    exposed[`${cp}/tcp`] = {}
+    const hostPort = def.hostPorts[String(cp)]
+    if (def.publishToHost && hostPort) bindings[`${cp}/tcp`] = [{ HostPort: String(hostPort) }]
+  }
+  const mountPath = def.mountPath.trim()
+  const binds: string[] = []
+  if (mountPath) {
+    const bindSrc = resolve(mcpToolDir(def.id)).replace(/\\/g, '/')
+    mkdirSync(mcpToolDir(def.id), { recursive: true })
+    binds.push(`${bindSrc}:${mountPath}`)
+  }
+  const container = await docker.createContainer({
+    name: toolNameFor(def.id),
+    Image: def.image,
+    Cmd: def.command,
+    Env: Object.entries(def.env).map(([k, v]) => `${k}=${v}`),
+    Labels: { 'attache.managed': 'true', 'attache.mcp-tool.id': def.id },
+    ExposedPorts: exposed,
+    HostConfig: {
+      Binds: binds,
+      PortBindings: bindings,
+      RestartPolicy: { Name: db.settings.docker.restartPolicy },
+      ...(db.settings.docker.securityOpt.length ? { SecurityOpt: db.settings.docker.securityOpt } : {}),
+      ...(def.memoryMb ? { Memory: def.memoryMb * 1024 * 1024 } : {}),
+      ...(def.cpus ? { NanoCpus: Math.round(def.cpus * 1e9) } : {}),
+    },
+  })
+  await container.start()
+  await attachToNetwork(container.id, [def.networkAlias])
+  return toolContainerInfo(def.id)
+}
+
+export async function stopToolContainer(id: string): Promise<ContainerInfo> {
+  try {
+    await getDocker().getContainer(toolNameFor(id)).stop({ t: 5 })
+  } catch (err) {
+    const code = (err as { statusCode?: number }).statusCode
+    if (code !== 304 && code !== 404) throw err
+  }
+  return toolContainerInfo(id)
+}
+
+export async function removeToolContainer(id: string): Promise<ContainerInfo> {
+  try {
+    await getDocker().getContainer(toolNameFor(id)).remove({ force: true })
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode !== 404) throw err
+  }
+  return { exists: false }
+}
+
+export async function toolContainerLogs(id: string, tail = 200): Promise<string> {
+  return readContainerLogs(toolNameFor(id), tail)
+}
+
+/**
+ * Attaches every already-running agent container to the shared network —
+ * containers started before this feature existed never got the connect call
+ * that now happens inline in startAgentContainer. Best-effort, safe to call
+ * on every boot (skips containers already attached or not running).
+ */
+export async function retrofitAgentsOntoNetwork(agentIds: string[]): Promise<void> {
+  const docker = getDocker()
+  for (const id of agentIds) {
+    try {
+      const insp = await docker.getContainer(nameFor(id)).inspect()
+      if (!insp.State.Running) continue
+      if (insp.NetworkSettings.Networks[ATTACHE_NETWORK]) continue
+      await attachToNetwork(insp.Id)
+    } catch {
+      // container doesn't exist / docker down — skip, nothing to retrofit
+    }
+  }
 }
