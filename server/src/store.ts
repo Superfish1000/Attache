@@ -186,15 +186,23 @@ function load(): { db: DB; migrated: boolean } {
     ),
     containers,
     // field backfill for tool container defs saved before newer fields existed
-    mcpTools: (raw.mcpTools ?? []).map((t: Partial<McpToolContainerDef> & { id: string; name: string; networkAlias: string; image: string; dockerfile: string; createdAt: string }) => ({
-      ...t,
-      hostPorts: t.hostPorts ?? {},
-      publishToHost: t.publishToHost ?? false,
-      mountPath: t.mountPath ?? '',
-      env: t.env ?? {},
-      command: t.command ?? [],
-      containerPorts: t.containerPorts ?? [],
-    })),
+    mcpTools: (raw.mcpTools ?? []).map(
+      (
+        t: Omit<
+          McpToolContainerDef,
+          'hostPorts' | 'publishToHost' | 'mountPath' | 'env' | 'command' | 'containerPorts'
+        > &
+          Partial<McpToolContainerDef>,
+      ) => ({
+        ...t,
+        hostPorts: t.hostPorts ?? {},
+        publishToHost: t.publishToHost ?? false,
+        mountPath: t.mountPath ?? '',
+        env: t.env ?? {},
+        command: t.command ?? [],
+        containerPorts: t.containerPorts ?? [],
+      }),
+    ),
     sessions: raw.sessions ?? [],
     // prune dead reset tokens at boot
     resetTokens: ((raw.resetTokens ?? []) as ResetToken[]).filter(
@@ -239,7 +247,8 @@ export function newId(): string {
   while (
     db.users.some((u) => u.id === id) ||
     db.agents.some((a) => a.id === id) ||
-    db.containers.some((c) => c.id === id)
+    db.containers.some((c) => c.id === id) ||
+    db.mcpTools.some((t) => t.id === id)
   ) {
     id = randomUUID().split('-')[0]
   }
