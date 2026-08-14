@@ -223,6 +223,9 @@ export default async function mcpToolRoutes(app: FastifyInstance) {
   app.post('/:id/container/regenerate', async (req, reply) => {
     const def = db.mcpTools.find((t) => t.id === (req.params as { id: string }).id)
     if (!def) return reply.code(404).send({ error: 'tool container definition not found' })
+    if (!(await dockerAvailable())) {
+      return reply.code(503).send({ error: 'Docker daemon is not available' })
+    }
     try {
       await removeToolContainer(def.id)
     } catch {
