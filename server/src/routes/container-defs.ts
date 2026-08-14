@@ -1,49 +1,9 @@
-import { spawn } from 'node:child_process'
 import type { FastifyInstance } from 'fastify'
 import { db, newId, save } from '../store.js'
 import { requireAdmin } from '../auth.js'
 import { isSafeRelPath } from '../agents.js'
+import { buildDockerfileImage } from '../docker-build.js'
 import type { ContainerDef, ContainerFileDef } from '../types.js'
-
-/** Runs the docker CLI, optionally piping stdin, capturing combined output. */
-function runDocker(args: string[], stdin?: string): Promise<{ code: number; output: string }> {
-  return new Promise((resolvePromise) => {
-    const child = spawn('docker', args, { windowsHide: true })
-    const chunks: Buffer[] = []
-    child.stdout.on('data', (d: Buffer) => chunks.push(d))
-    child.stderr.on('data', (d: Buffer) => chunks.push(d))
-    child.on('error', (err) => resolvePromise({ code: -1, output: String(err) }))
-    child.on('close', (code) =>
-      resolvePromise({ code: code ?? -1, output: Buffer.concat(chunks).toString('utf8') }),
-    )
-    if (stdin !== undefined) child.stdin.write(stdin)
-    child.stdin.end()
-    setTimeout(() => child.kill(), 600_000).unref()
-  })
-}
-
-/**
- * FROM + RUN-only Dockerfiles can be emulated on daemons whose seccomp
- * breaks `docker build` (run the RUNs in a container with the configured
- * securityOpt, then commit). Anything fancier returns null.
- */
-function parseSimpleDockerfile(text: string): { from: string; runs: string[] } | null {
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith('#'))
-  const fromMatch = lines[0]?.match(/^FROM\s+(\S+)$/i)
-  if (!fromMatch) return null
-  const runs: string[] = []
-  for (const line of lines.slice(1)) {
-    const m = line.match(/^RUN\s+(.+)$/i)
-    if (!m) return null
-    runs.push(m[1])
-  }
-  return runs.length ? { from: fromMatch[1], runs } : null
-}
-
-const tail = (s: string) => s.slice(-1500)
 
 const KEY_RE = /^[a-z0-9][a-z0-9-]*$/
 
@@ -224,44 +184,12 @@ export default async function containerDefRoutes(app: FastifyInstance) {
     if (!def.image.trim() || def.image.includes(' ')) {
       return reply.code(400).send({ error: 'definition image must be a valid tag to build into' })
     }
-    const build = await runDocker(['build', '-t', def.image, '-'], def.dockerfile)
-    if (build.code === 0) return { ok: true, method: 'build', output: tail(build.output) }
-
-    const simple = parseSimpleDockerfile(def.dockerfile)
-    if (!simple) {
-      return { ok: false, method: 'build', output: tail(build.output) }
-    }
-    const tmp = `attache-build-${def.id}`
-    await runDocker(['rm', '-f', tmp])
-    const secOpts = db.settings.docker.securityOpt.flatMap((o) => ['--security-opt', o])
-    const run = await runDocker([
-      'run', '--name', tmp, ...secOpts, '--entrypoint', 'sh', simple.from, '-c', simple.runs.join(' && '),
-    ])
-    if (run.code !== 0) {
-      await runDocker(['rm', '-f', tmp])
-      return {
-        ok: false,
-        method: 'run-commit',
-        output: tail(`build failed:\n${build.output}\n--- emulation also failed ---\n${run.output}`),
-      }
-    }
-    const insp = await runDocker([
-      'inspect', simple.from, '--format', '{{json .Config.Entrypoint}}|||{{json .Config.Cmd}}',
-    ])
-    const changes: string[] = []
-    if (insp.code === 0) {
-      const [ep, cmd] = insp.output.trim().split('|||')
-      if (ep && ep !== 'null') changes.push('--change', `ENTRYPOINT ${ep}`)
-      if (cmd && cmd !== 'null') changes.push('--change', `CMD ${cmd}`)
-    }
-    const commit = await runDocker(['commit', ...changes, tmp, def.image])
-    await runDocker(['rm', '-f', tmp])
-    if (commit.code !== 0) return { ok: false, method: 'run-commit', output: tail(commit.output) }
-    return {
-      ok: true,
-      method: 'run-commit',
-      output: tail(run.output) + '\n--- built via run+commit (old-daemon fallback) ---',
-    }
+    return buildDockerfileImage(
+      def.image,
+      def.dockerfile,
+      `attache-build-${def.id}`,
+      db.settings.docker.securityOpt,
+    )
   })
 
   app.put('/:id/default', async (req, reply) => {
