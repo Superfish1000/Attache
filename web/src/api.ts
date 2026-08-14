@@ -8,6 +8,7 @@ import type {
   McpInfo,
   McpProvisionResult,
   McpStatus,
+  McpToolContainerDef,
   MeResponse,
   O365Member,
   O365SettingsView,
@@ -141,6 +142,20 @@ export const api = {
         method: 'POST',
       }),
     remove: (id: string) => req<void>(`/api/container-defs/${id}`, { method: 'DELETE' }),
+  },
+  mcpTools: {
+    list: () => req<{ tools: McpToolContainerDef[] }>('/api/mcp-tools'),
+    create: (body: Partial<McpToolContainerDef>) => req<McpToolContainerDef>('/api/mcp-tools', json('POST', body)),
+    update: (id: string, patch: Partial<McpToolContainerDef>) =>
+      req<McpToolContainerDef>(`/api/mcp-tools/${id}`, json('PATCH', patch)),
+    remove: (id: string) => req<void>(`/api/mcp-tools/${id}`, { method: 'DELETE' }),
+    build: (id: string) =>
+      req<{ ok: boolean; method: string; output: string }>(`/api/mcp-tools/${id}/build`, { method: 'POST' }),
+    container: (id: string) => req<ContainerState>(`/api/mcp-tools/${id}/container`),
+    containerLogs: (id: string) => req<{ logs: string }>(`/api/mcp-tools/${id}/container/logs`),
+    containerAction: (id: string, action: 'start' | 'stop' | 'remove') =>
+      req<ContainerState>(`/api/mcp-tools/${id}/container/${action}`, { method: 'POST' }),
+    regenerate: (id: string) => req<ContainerState>(`/api/mcp-tools/${id}/container/regenerate`, { method: 'POST' }),
   },
   settings: {
     get: () => req<SettingsView>('/api/settings'),

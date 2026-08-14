@@ -79,6 +79,23 @@ export interface ContainerDef {
   createdAt: string
 }
 
+export interface McpToolContainerDef {
+  id: string
+  name: string
+  networkAlias: string
+  image: string
+  command: string[]
+  env: Record<string, string>
+  containerPorts: number[]
+  hostPorts: Record<string, number>
+  publishToHost: boolean
+  mountPath: string
+  memoryMb?: number
+  cpus?: number
+  dockerfile: string
+  createdAt: string
+}
+
 export interface AgentDocInfo {
   key: string
   label: string
