@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { Chip, ErrorBanner, normalizeImageRef } from '../components'
 import type { ContainerState, McpToolContainerDef } from '../types'
@@ -27,7 +27,12 @@ export default function McpToolContainers() {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
 
+  // guards against a stale container() response from a previous selection landing
+  // after a newer one was picked (same class of race as Chat.tsx's abortRef)
+  const selIdRef = useRef('')
+
   const select = useCallback((def: McpToolContainerDef) => {
+    selIdRef.current = def.id
     setSelId(def.id)
     setSavedDef(def)
     setName(def.name)
@@ -47,7 +52,9 @@ export default function McpToolContainers() {
     setContainer(null)
     api.mcpTools
       .container(def.id)
-      .then(setContainer)
+      .then((c) => {
+        if (selIdRef.current === def.id) setContainer(c)
+      })
       .catch(() => undefined)
   }, [])
 
@@ -415,7 +422,8 @@ export default function McpToolContainers() {
             <div className="btn-row" style={{ marginTop: 12 }}>
               <button
                 className="btn btn-primary"
-                disabled={!dockerUp || busy || !image.trim() || !networkAlias.trim()}
+                disabled={!dockerUp || busy || !savedDef?.image.trim() || !savedDef?.networkAlias.trim()}
+                title="Uses the last SAVED config — press Save definition first if you've edited it."
                 onClick={() => act('start')}
               >
                 Start
