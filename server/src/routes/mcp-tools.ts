@@ -183,13 +183,26 @@ export default async function mcpToolRoutes(app: FastifyInstance) {
   app.get('/:id/container/logs', async (req, reply) => {
     const def = db.mcpTools.find((t) => t.id === (req.params as { id: string }).id)
     if (!def) return reply.code(404).send({ error: 'tool container definition not found' })
-    return { logs: await toolContainerLogs(def.id) }
+    if (!(await dockerAvailable())) {
+      return reply.code(503).send({ error: 'Docker daemon is not available' })
+    }
+    try {
+      return { logs: await toolContainerLogs(def.id) }
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode === 404) {
+        return reply.code(404).send({ error: 'no container for this tool yet' })
+      }
+      throw err
+    }
   })
 
   app.post('/:id/container/:action', async (req, reply) => {
     const def = db.mcpTools.find((t) => t.id === (req.params as { id: string }).id)
     if (!def) return reply.code(404).send({ error: 'tool container definition not found' })
     const { action } = req.params as { action: string }
+    if (!(await dockerAvailable())) {
+      return reply.code(503).send({ error: 'Docker daemon is not available' })
+    }
     try {
       if (action === 'start') {
         if (!def.image.trim() || !def.networkAlias.trim()) {
