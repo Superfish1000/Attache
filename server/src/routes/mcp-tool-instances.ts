@@ -107,9 +107,13 @@ function applyBody(
 }
 
 export default async function mcpToolInstanceRoutes(app: FastifyInstance) {
-  app.get('/', async () => ({ instances: db.mcpToolInstances }))
+  app.get('/', async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply
+    return { instances: db.mcpToolInstances }
+  })
 
   app.get('/:id', async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply
     const instance = db.mcpToolInstances.find((i) => i.id === (req.params as { id: string }).id)
     if (!instance) return reply.code(404).send({ error: 'instance not found' })
     return instance
@@ -128,9 +132,7 @@ export default async function mcpToolInstanceRoutes(app: FastifyInstance) {
       id: newId(),
       defId: def.id,
       name: name?.trim() || def.name,
-      networkAlias:
-        networkAlias?.trim().toLowerCase() ||
-        nextAvailableAlias(def.name, db.mcpToolInstances.map((i) => i.networkAlias)),
+      networkAlias: nextAvailableAlias(def.name, db.mcpToolInstances.map((i) => i.networkAlias)),
       config: {
         image: def.image,
         command: [...def.command],
@@ -143,6 +145,10 @@ export default async function mcpToolInstanceRoutes(app: FastifyInstance) {
         ...(def.cpus ? { cpus: def.cpus } : {}),
       },
       createdAt: new Date().toISOString(),
+    }
+    if (networkAlias?.trim()) {
+      const err = applyBody(instance, { networkAlias })
+      if (err) return reply.code(400).send({ error: err })
     }
     db.mcpToolInstances.push(instance)
     save()
@@ -176,6 +182,7 @@ export default async function mcpToolInstanceRoutes(app: FastifyInstance) {
   })
 
   app.get('/:id/container', async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply
     const instance = db.mcpToolInstances.find((i) => i.id === (req.params as { id: string }).id)
     if (!instance) return reply.code(404).send({ error: 'instance not found' })
     if (!(await dockerAvailable())) return { available: false, exists: false }
