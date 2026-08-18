@@ -309,21 +309,44 @@ export function Chip({ tone, children }: { tone: ChipTone; children: ReactNode }
   return <span className={`chip chip-${tone}`}>{children}</span>
 }
 
-/** Copies `text` to the clipboard on click; briefly shows a "Copied" confirmation. */
+/**
+ * Copies `text` to the clipboard on click; briefly shows a "Copied" (or
+ * "Copy failed") confirmation. navigator.clipboard requires a secure context
+ * (HTTPS, or the literal hostname "localhost") — this app is commonly opened
+ * over plain http:// on a LAN address, where navigator.clipboard is
+ * undefined, so we fall back to a hidden-textarea + execCommand copy rather
+ * than let the click silently do nothing.
+ */
 export function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <button
-      type="button"
-      className="btn btn-ghost"
-      title={`Copy ${text}`}
-      onClick={async () => {
+  const [status, setStatus] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const flash = (s: 'copied' | 'failed') => {
+    setStatus(s)
+    setTimeout(() => setStatus('idle'), 1500)
+  }
+  const copy = async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
-      }}
-    >
-      {copied ? 'Copied' : 'Copy'}
+      } else {
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.style.position = 'fixed'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.focus()
+        ta.select()
+        const ok = document.execCommand('copy')
+        document.body.removeChild(ta)
+        if (!ok) throw new Error('execCommand copy failed')
+      }
+      flash('copied')
+    } catch {
+      flash('failed')
+    }
+  }
+  return (
+    <button type="button" className="btn btn-copy" title={`Copy ${text}`} onClick={copy}>
+      {status === 'copied' ? 'Copied' : status === 'failed' ? 'Copy failed' : 'Copy'}
     </button>
   )
 }

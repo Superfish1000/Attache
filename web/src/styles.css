@@ -326,6 +326,18 @@ label {
   padding: 2px 6px;
 }
 
+/* compact, but must stay visibly a button — used inline next to plain text (addresses, aliases) */
+.btn-copy {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  padding: 1px 8px;
+  font-size: 12px;
+}
+
+.btn-copy:hover:not(:disabled) {
+  border-color: var(--accent-dim);
+}
+
 .btn-row {
   display: flex;
   gap: 8px;
