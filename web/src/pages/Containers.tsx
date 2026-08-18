@@ -72,13 +72,13 @@ export default function Containers() {
           }
         })
         .catch((e: Error) => setErr(e.message))
-      api.mcpTools
+      api.mcpToolInstances
         .list()
         .then((res) =>
           setToolAddresses(
-            res.tools
-              .filter((t) => t.networkAlias && t.containerPorts.length > 0)
-              .map((t) => `http://${t.networkAlias}:${t.containerPorts[0]}`),
+            res.instances
+              .filter((i) => i.networkAlias && i.config.containerPorts.length > 0)
+              .map((i) => `http://${i.networkAlias}:${i.config.containerPorts[0]}`),
           ),
         )
         .catch(() => undefined)

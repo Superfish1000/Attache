@@ -1,19 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { Chip, ErrorBanner, normalizeImageRef } from '../components'
-import type { ContainerState, McpToolContainerDef } from '../types'
+import type { McpToolContainerDef, McpToolInstance } from '../types'
 
 export default function McpToolContainers() {
   const [defs, setDefs] = useState<McpToolContainerDef[]>([])
+  const [instances, setInstances] = useState<McpToolInstance[]>([])
   const [selId, setSelId] = useState('')
-  const [savedDef, setSavedDef] = useState<McpToolContainerDef | null>(null)
   const [name, setName] = useState('')
-  const [networkAlias, setNetworkAlias] = useState('')
   const [image, setImage] = useState('')
   const [command, setCommand] = useState('')
   const [envText, setEnvText] = useState('{}')
   const [portsCsv, setPortsCsv] = useState('')
-  const [publishToHost, setPublishToHost] = useState(false)
   const [mountPath, setMountPath] = useState('')
   const [memoryMb, setMemoryMb] = useState('')
   const [cpus, setCpus] = useState('')
@@ -21,51 +19,33 @@ export default function McpToolContainers() {
   const [imgMode, setImgMode] = useState<'image' | 'dockerfile'>('image')
   const [buildOut, setBuildOut] = useState('')
   const [building, setBuilding] = useState(false)
-  const [container, setContainer] = useState<ContainerState | null>(null)
-  const [logs, setLogs] = useState<string | null>(null)
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
 
-  // guards against a stale container() response from a previous selection landing
-  // after a newer one was picked (same class of race as Chat.tsx's abortRef)
-  const selIdRef = useRef('')
-
   const select = useCallback((def: McpToolContainerDef) => {
-    selIdRef.current = def.id
     setSelId(def.id)
-    setSavedDef(def)
     setName(def.name)
-    setNetworkAlias(def.networkAlias)
     setImage(def.image)
     setCommand(def.command.join(' '))
     setEnvText(JSON.stringify(def.env, null, 2))
     setPortsCsv(def.containerPorts.join(', '))
-    setPublishToHost(def.publishToHost)
     setMountPath(def.mountPath)
     setMemoryMb(def.memoryMb ? String(def.memoryMb) : '')
     setCpus(def.cpus ? String(def.cpus) : '')
     setDockerfile(def.dockerfile)
     setImgMode(def.dockerfile.trim() ? 'dockerfile' : 'image')
     setBuildOut('')
-    setLogs(null)
-    setContainer(null)
-    api.mcpTools
-      .container(def.id)
-      .then((c) => {
-        if (selIdRef.current === def.id) setContainer(c)
-      })
-      .catch(() => undefined)
   }, [])
 
   const reload = useCallback(
     (keepSel = true) => {
-      api.mcpTools
-        .list()
-        .then((res) => {
-          setDefs(res.tools)
+      Promise.all([api.mcpTools.list(), api.mcpToolInstances.list()])
+        .then(([t, i]) => {
+          setDefs(t.tools)
+          setInstances(i.instances)
           if (keepSel) {
-            const cur = res.tools.find((d) => d.id === selId)
+            const cur = t.tools.find((d) => d.id === selId)
             if (cur) select(cur)
           }
         })
@@ -83,6 +63,8 @@ export default function McpToolContainers() {
     setNote(msg)
     setTimeout(() => setNote(''), 2500)
   }
+
+  const instanceCount = (defId: string) => instances.filter((i) => i.defId === defId).length
 
   const newDef = async () => {
     setErr('')
@@ -107,12 +89,10 @@ export default function McpToolContainers() {
     }
     return api.mcpTools.update(selId, {
       name,
-      networkAlias,
       image: normalizeImageRef(image),
       command: command.split(/\s+/).filter(Boolean),
       env,
       containerPorts: portsCsv.split(/[,\s]+/).filter(Boolean).map(Number),
-      publishToHost,
       mountPath,
       memoryMb: memoryMb ? Number(memoryMb) : 0,
       cpus: cpus ? Number(cpus) : 0,
@@ -125,7 +105,6 @@ export default function McpToolContainers() {
     setErr('')
     try {
       const updated = await persistDef()
-      setSavedDef(updated)
       flash(`${updated.name} saved`)
       reload()
     } catch (e) {
@@ -138,12 +117,11 @@ export default function McpToolContainers() {
   const removeDef = async () => {
     const def = defs.find((d) => d.id === selId)
     if (!def) return
-    if (!confirm(`Delete MCP tool container "${def.name}"?`)) return
+    if (!confirm(`Delete MCP tool container definition "${def.name}"?`)) return
     setErr('')
     try {
       await api.mcpTools.remove(selId)
       setSelId('')
-      setSavedDef(null)
       reload(false)
     } catch (e) {
       setErr((e as Error).message)
@@ -161,8 +139,7 @@ export default function McpToolContainers() {
     setErr('')
     setBuildOut('')
     try {
-      const updated = await persistDef()
-      setSavedDef(updated)
+      await persistDef()
       const res = await api.mcpTools.build(selId)
       setBuildOut(`${res.ok ? '✓ built' : '✗ failed'} (${res.method})\n${res.output}`)
       if (res.ok) flash(`Image ${image} built via ${res.method}`)
@@ -173,59 +150,12 @@ export default function McpToolContainers() {
     }
   }
 
-  const act = async (action: 'start' | 'stop' | 'remove') => {
-    setBusy(true)
-    setErr('')
-    try {
-      setContainer(await api.mcpTools.containerAction(selId, action))
-      flash(`Container ${action} ok`)
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const regenerateContainer = async () => {
-    setBusy(true)
-    setErr('')
-    try {
-      setContainer(await api.mcpTools.regenerate(selId))
-      flash('Container regenerated')
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const fetchLogs = async () => {
-    setErr('')
-    try {
-      const res = await api.mcpTools.containerLogs(selId)
-      setLogs(res.logs || '(no output yet)')
-    } catch (e) {
-      setErr((e as Error).message)
-    }
-  }
-
-  const ports = portsCsv.split(/[,\s]+/).filter(Boolean).map(Number)
-  const dockerUp = container?.available ?? false
-  const statusChip = !container
-    ? null
-    : !container.available
-      ? <Chip tone="err">docker offline</Chip>
-      : container.exists
-        ? <Chip tone={container.running ? 'ok' : 'off'}>{container.state ?? (container.running ? 'running' : 'stopped')}</Chip>
-        : <Chip tone="off">no container yet</Chip>
-
   return (
     <>
       <h2>MCP tool containers</h2>
       <p className="muted">
-        Standalone containers that run MCP server software, reachable by any agent over the shared
-        Attaché network — decoupled from any specific agent. Once one is running, paste its address
-        (shown per row below) into an agent's MCP server URL field.
+        Reusable templates for standalone MCP server containers. Each definition can be spun up as
+        several independent copies — manage running copies on the <b>MCP Tools</b> page.
       </p>
       <ErrorBanner message={err} onDismiss={() => setErr('')} />
       {note && <div className="panel ok-note">{note}</div>}
@@ -236,7 +166,7 @@ export default function McpToolContainers() {
             <tr>
               <th>Name</th>
               <th>Image</th>
-              <th>Network alias</th>
+              <th>Instances</th>
               <th></th>
             </tr>
           </thead>
@@ -255,7 +185,7 @@ export default function McpToolContainers() {
                   </a>
                 </td>
                 <td className="mono">{d.image}</td>
-                <td className="mono">{d.networkAlias}</td>
+                <td>{instanceCount(d.id)}</td>
                 <td>
                   <button className="btn" onClick={() => select(d)}>
                     Edit
@@ -282,24 +212,8 @@ export default function McpToolContainers() {
                 <input value={name} onChange={(e) => setName(e.target.value)} />
               </div>
               <div className="field">
-                <label>Network alias</label>
-                <input
-                  value={networkAlias}
-                  onChange={(e) => setNetworkAlias(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                />
-              </div>
-            </div>
-            <p className="muted" style={{ marginTop: 0 }}>
-              How agents reach this container: http://&lt;alias&gt;:&lt;port&gt;
-            </p>
-
-            <div className="form-row">
-              <div className="field">
                 <label>Image source</label>
-                <select
-                  value={imgMode}
-                  onChange={(e) => setImgMode(e.target.value as 'image' | 'dockerfile')}
-                >
+                <select value={imgMode} onChange={(e) => setImgMode(e.target.value as 'image' | 'dockerfile')}>
                   <option value="image">Standard image</option>
                   <option value="dockerfile">Build from Dockerfile</option>
                 </select>
@@ -316,8 +230,7 @@ export default function McpToolContainers() {
             {imgMode === 'dockerfile' && (
               <details className="doc-exp" style={{ marginTop: 10 }}>
                 <summary>
-                  <b>Dockerfile</b>{' '}
-                  <span className="mono muted">built as {image || '(set a tag above)'}</span>
+                  <b>Dockerfile</b> <span className="mono muted">built as {image || '(set a tag above)'}</span>
                 </summary>
                 <div className="doc-body">
                   <div className="field">
@@ -329,11 +242,7 @@ export default function McpToolContainers() {
                     />
                   </div>
                   <div className="btn-row">
-                    <button
-                      className="btn"
-                      disabled={building || !dockerfile.trim()}
-                      onClick={buildImage}
-                    >
+                    <button className="btn" disabled={building || !dockerfile.trim()} onClick={buildImage}>
                       {building ? 'Building…' : 'Build image'}
                     </button>
                     <span className="muted" style={{ alignSelf: 'center' }}>
@@ -374,76 +283,19 @@ export default function McpToolContainers() {
               </div>
             </div>
 
-            <label className="check-row">
-              <input
-                type="checkbox"
-                checked={publishToHost}
-                onChange={(e) => setPublishToHost(e.target.checked)}
-              />
-              <span className="muted">Also publish to a host port (for direct/admin access)</span>
-            </label>
-            {publishToHost && ports.length > 0 && (
-              <p className="mono muted" style={{ marginTop: 4 }}>
-                {ports
-                  .map((p) => {
-                    const hp = savedDef?.hostPorts?.[String(p)]
-                    return `${p} → ${hp ? `host port ${hp}` : 'assign on next save'}`
-                  })
-                  .join(' · ')}
-              </p>
-            )}
-
-            {networkAlias && ports.length > 0 && (
-              <p className="mono muted">
-                Reachable at: {ports.map((p) => `http://${networkAlias}:${p}`).join(' · ')}
-              </p>
-            )}
-
             <div className="btn-row" style={{ marginTop: 18 }}>
               <button className="btn btn-primary" disabled={busy} onClick={saveDef}>
                 Save definition
               </button>
-              <button className="btn btn-danger" disabled={busy} onClick={removeDef}>
+              <button className="btn btn-danger" disabled={instanceCount(selId) > 0} onClick={removeDef}>
                 Delete
               </button>
-            </div>
-          </div>
-
-          <h2>Container</h2>
-          <div className="panel">
-            <div className="form-row">
-              {statusChip}
-              {container?.exists && (
-                <span className="mono muted">
-                  {container.containerId} · {container.image}
+              {instanceCount(selId) > 0 && (
+                <span className="muted" style={{ alignSelf: 'center' }}>
+                  in use by {instanceCount(selId)} instance(s)
                 </span>
               )}
             </div>
-            <div className="btn-row" style={{ marginTop: 12 }}>
-              <button
-                className="btn btn-primary"
-                disabled={!dockerUp || busy || !savedDef?.image.trim() || !savedDef?.networkAlias.trim()}
-                title="Uses the last SAVED config — press Save definition first if you've edited it."
-                onClick={() => act('start')}
-              >
-                Start
-              </button>
-              <button className="btn" disabled={!dockerUp || busy} onClick={() => act('stop')}>
-                Stop
-              </button>
-              <button
-                className="btn"
-                disabled={!dockerUp || busy}
-                title="Remove + recreate + start so env, port and definition changes apply. Uses the last SAVED config — press Save definition first if you've edited it."
-                onClick={regenerateContainer}
-              >
-                Regenerate
-              </button>
-              <button className="btn" disabled={!dockerUp} onClick={fetchLogs}>
-                {logs === null ? 'View logs' : 'Refresh logs'}
-              </button>
-            </div>
-            {logs !== null && <pre className="logbox">{logs}</pre>}
           </div>
         </>
       )}
