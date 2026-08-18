@@ -68,18 +68,21 @@ function applyBody(def: ContainerDef, body: Partial<ContainerDef>): string | nul
   }
   if (body.memoryMb !== undefined) {
     const m = Number(body.memoryMb)
+    if (Number.isNaN(m)) return 'memoryMb must be a number (blank or 0 clears)'
     if (m && (!Number.isInteger(m) || m < 64)) return 'memoryMb must be an integer >= 64 (0 clears)'
     if (m) def.memoryMb = m
     else delete def.memoryMb
   }
   if (body.cpus !== undefined) {
     const c = Number(body.cpus)
-    if (c && (!Number.isFinite(c) || c <= 0 || c > 64)) return 'cpus must be > 0 and <= 64 (0 clears)'
+    if (Number.isNaN(c)) return 'cpus must be a number (blank or 0 clears)'
+    if (c && (c <= 0 || c > 64)) return 'cpus must be > 0 and <= 64 (0 clears)'
     if (c) def.cpus = c
     else delete def.cpus
   }
   if (body.shmSizeMb !== undefined) {
     const s = Number(body.shmSizeMb)
+    if (Number.isNaN(s)) return 'shmSizeMb must be a number (blank or 0 clears)'
     if (s && (!Number.isInteger(s) || s < 1)) return 'shmSizeMb must be an integer >= 1 (0 clears)'
     if (s) def.shmSizeMb = s
     else delete def.shmSizeMb

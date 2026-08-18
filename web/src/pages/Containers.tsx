@@ -8,6 +8,7 @@ import {
   McpServersHelp,
   McpTemplatesHelp,
   normalizeImageRef,
+  parseLimitField,
 } from '../components'
 import McpToolContainers from './McpToolContainers'
 import type { Agent, ContainerDef, ContainerFileDef, McpServerDef } from '../types'
@@ -128,9 +129,9 @@ export default function Containers() {
       mountPath,
       containerPorts: portsCsv.split(/[,\s]+/).filter(Boolean).map(Number),
       env,
-      memoryMb: memoryMb ? Number(memoryMb) : 0,
-      cpus: cpus ? Number(cpus) : 0,
-      shmSizeMb: shmSizeMb ? Number(shmSizeMb) : 0,
+      memoryMb: parseLimitField('Memory MB', memoryMb),
+      cpus: parseLimitField('CPUs', cpus),
+      shmSizeMb: parseLimitField('Shared memory MB', shmSizeMb),
       files,
       mcpServers,
       mcpProvisionCommand: mcpCmd,

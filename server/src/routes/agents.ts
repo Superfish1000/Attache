@@ -123,6 +123,9 @@ export default async function agentRoutes(app: FastifyInstance) {
       }
       if (config.memoryMb !== undefined) {
         const m = Number(config.memoryMb)
+        if (Number.isNaN(m)) {
+          return reply.code(400).send({ error: 'config.memoryMb must be a number (blank or 0 clears)' })
+        }
         if (m && (!Number.isInteger(m) || m < 64)) {
           return reply.code(400).send({ error: 'config.memoryMb must be an integer >= 64 (0 clears)' })
         }
@@ -131,7 +134,10 @@ export default async function agentRoutes(app: FastifyInstance) {
       }
       if (config.cpus !== undefined) {
         const c = Number(config.cpus)
-        if (c && (!Number.isFinite(c) || c <= 0 || c > 64)) {
+        if (Number.isNaN(c)) {
+          return reply.code(400).send({ error: 'config.cpus must be a number (blank or 0 clears)' })
+        }
+        if (c && (c <= 0 || c > 64)) {
           return reply.code(400).send({ error: 'config.cpus must be > 0 and <= 64 (0 clears)' })
         }
         if (c) agent.config.cpus = c
@@ -139,6 +145,9 @@ export default async function agentRoutes(app: FastifyInstance) {
       }
       if (config.shmSizeMb !== undefined) {
         const s = Number(config.shmSizeMb)
+        if (Number.isNaN(s)) {
+          return reply.code(400).send({ error: 'config.shmSizeMb must be a number (blank or 0 clears)' })
+        }
         if (s && (!Number.isInteger(s) || s < 1)) {
           return reply.code(400).send({ error: 'config.shmSizeMb must be an integer >= 1 (0 clears)' })
         }

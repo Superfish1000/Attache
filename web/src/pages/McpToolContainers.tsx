@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
-import { Chip, ErrorBanner, normalizeImageRef } from '../components'
+import { Chip, ErrorBanner, normalizeImageRef, parseLimitField } from '../components'
 import type { McpToolContainerDef, McpToolInstance } from '../types'
 
 export default function McpToolContainers() {
@@ -96,9 +96,9 @@ export default function McpToolContainers() {
       env,
       containerPorts: portsCsv.split(/[,\s]+/).filter(Boolean).map(Number),
       mountPath,
-      memoryMb: memoryMb ? Number(memoryMb) : 0,
-      cpus: cpus ? Number(cpus) : 0,
-      shmSizeMb: shmSizeMb ? Number(shmSizeMb) : 0,
+      memoryMb: parseLimitField('Memory MB', memoryMb),
+      cpus: parseLimitField('CPUs', cpus),
+      shmSizeMb: parseLimitField('Shared memory MB', shmSizeMb),
       dockerfile: imgMode === 'dockerfile' ? dockerfile : '',
     })
   }

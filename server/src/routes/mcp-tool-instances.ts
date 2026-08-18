@@ -115,18 +115,21 @@ function applyBody(
     }
     if (c.memoryMb !== undefined) {
       const m = Number(c.memoryMb)
+      if (Number.isNaN(m)) return 'config.memoryMb must be a number (blank or 0 clears)'
       if (m && (!Number.isInteger(m) || m < 64)) return 'config.memoryMb must be an integer >= 64 (0 clears)'
       if (m) instance.config.memoryMb = m
       else delete instance.config.memoryMb
     }
     if (c.cpus !== undefined) {
       const cp = Number(c.cpus)
-      if (cp && (!Number.isFinite(cp) || cp <= 0 || cp > 64)) return 'config.cpus must be > 0 and <= 64 (0 clears)'
+      if (Number.isNaN(cp)) return 'config.cpus must be a number (blank or 0 clears)'
+      if (cp && (cp <= 0 || cp > 64)) return 'config.cpus must be > 0 and <= 64 (0 clears)'
       if (cp) instance.config.cpus = cp
       else delete instance.config.cpus
     }
     if (c.shmSizeMb !== undefined) {
       const s = Number(c.shmSizeMb)
+      if (Number.isNaN(s)) return 'config.shmSizeMb must be a number (blank or 0 clears)'
       if (s && (!Number.isInteger(s) || s < 1)) return 'config.shmSizeMb must be an integer >= 1 (0 clears)'
       if (s) instance.config.shmSizeMb = s
       else delete instance.config.shmSizeMb

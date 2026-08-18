@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
-import { Chip, EnvVarsHelp, ErrorBanner, InfoPopup, fmtDate, normalizeImageRef } from '../components'
+import { Chip, EnvVarsHelp, ErrorBanner, InfoPopup, fmtDate, normalizeImageRef, parseLimitField } from '../components'
 
 const noteOf = (res: { missing?: boolean; unreadable?: boolean; viaContainer?: boolean }) =>
   res.missing
@@ -124,9 +124,9 @@ export default function AgentDetail() {
           env,
           mountPath,
           ports,
-          memoryMb: memoryMb ? Number(memoryMb) : 0,
-          cpus: cpus ? Number(cpus) : 0,
-          shmSizeMb: shmSizeMb ? Number(shmSizeMb) : 0,
+          memoryMb: parseLimitField('Memory limit MB', memoryMb),
+          cpus: parseLimitField('CPU limit', cpus),
+          shmSizeMb: parseLimitField('Shared memory MB', shmSizeMb),
         },
       })
       setAgent(updated)

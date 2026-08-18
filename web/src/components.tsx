@@ -370,6 +370,23 @@ export function ErrorBanner({ message, onDismiss }: { message: string; onDismiss
  * (tags/digests may keep their case). Also strips whitespace, which is never
  * valid anywhere in a reference.
  */
+/**
+ * Parses a numeric-limit field's text input (Memory MB, CPUs, Shared memory
+ * MB, ...) for a save payload. Blank means "clear" (0). Throws a friendly
+ * error on anything non-numeric — e.g. Docker's own "1g" shorthand isn't
+ * valid here (these fields want plain megabytes) — so a mistyped value
+ * surfaces as a visible error instead of silently clearing the field
+ * (Number("1g") is NaN, and NaN is falsy just like 0).
+ */
+export function parseLimitField(label: string, raw: string): number {
+  if (!raw.trim()) return 0
+  const n = Number(raw)
+  if (!Number.isFinite(n)) {
+    throw new Error(`${label} must be a plain number (e.g. 1024) — no units like "g" or "mb"`)
+  }
+  return n
+}
+
 export function normalizeImageRef(value: string): string {
   const v = value.replace(/\s+/g, '')
   const at = v.indexOf('@')

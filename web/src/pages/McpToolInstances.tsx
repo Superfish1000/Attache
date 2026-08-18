@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { useAuth } from '../auth'
-import { Chip, CopyButton, ErrorBanner, normalizeImageRef } from '../components'
+import { Chip, CopyButton, ErrorBanner, normalizeImageRef, parseLimitField } from '../components'
 import type { ContainerState, McpToolContainerDef, McpToolInstance } from '../types'
 
 export default function McpToolInstances() {
@@ -114,9 +114,9 @@ export default function McpToolInstances() {
           containerPorts: portsCsv.split(/[,\s]+/).filter(Boolean).map(Number),
           publishToHost,
           mountPath,
-          memoryMb: memoryMb ? Number(memoryMb) : 0,
-          cpus: cpus ? Number(cpus) : 0,
-          shmSizeMb: shmSizeMb ? Number(shmSizeMb) : 0,
+          memoryMb: parseLimitField('Memory MB', memoryMb),
+          cpus: parseLimitField('CPUs', cpus),
+          shmSizeMb: parseLimitField('Shared memory MB', shmSizeMb),
         },
       })
       flash('Instance saved')
