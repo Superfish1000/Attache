@@ -55,6 +55,7 @@ export function createAgent(
   }
   const memoryMb = config?.memoryMb ?? def.memoryMb
   const cpus = config?.cpus ?? def.cpus
+  const shmSizeMb = config?.shmSizeMb ?? def.shmSizeMb
   const agent: Agent = {
     id: newId(),
     userId,
@@ -69,6 +70,7 @@ export function createAgent(
       ports,
       ...(memoryMb !== undefined ? { memoryMb } : {}),
       ...(cpus !== undefined ? { cpus } : {}),
+      ...(shmSizeMb !== undefined ? { shmSizeMb } : {}),
     },
     createdAt: new Date().toISOString(),
   }

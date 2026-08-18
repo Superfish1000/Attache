@@ -35,6 +35,8 @@ export interface AgentConfig {
   ports: Record<string, number>
   memoryMb?: number
   cpus?: number
+  /** /dev/shm size in MB (Docker default is 64MB — too small for some Chromium/browser-automation workloads). */
+  shmSizeMb?: number
 }
 
 /** A behavior file managed on the agent screen, defined per container definition. */
@@ -85,6 +87,7 @@ export interface ContainerDef {
   containerPorts: number[]
   memoryMb?: number
   cpus?: number
+  shmSizeMb?: number
   files: ContainerFileDef[]
   /** MCP servers provisioned into each agent of this definition. */
   mcpServers: McpServerDef[]
@@ -130,6 +133,7 @@ export interface McpToolContainerDef {
   mountPath: string
   memoryMb?: number
   cpus?: number
+  shmSizeMb?: number
   /** Optional Dockerfile; built the same way container definitions are (native build, falls back to run+commit emulation on daemons whose seccomp breaks builds). */
   dockerfile: string
   createdAt: string
@@ -148,6 +152,7 @@ export interface McpToolInstanceConfig {
   mountPath: string
   memoryMb?: number
   cpus?: number
+  shmSizeMb?: number
 }
 
 /** One running (or stoppable) copy of an MCP tool container definition — mirrors Agent/ContainerDef. */

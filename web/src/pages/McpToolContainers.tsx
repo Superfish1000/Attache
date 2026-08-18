@@ -15,6 +15,7 @@ export default function McpToolContainers() {
   const [mountPath, setMountPath] = useState('')
   const [memoryMb, setMemoryMb] = useState('')
   const [cpus, setCpus] = useState('')
+  const [shmSizeMb, setShmSizeMb] = useState('')
   const [dockerfile, setDockerfile] = useState('')
   const [imgMode, setImgMode] = useState<'image' | 'dockerfile'>('image')
   const [buildOut, setBuildOut] = useState('')
@@ -33,6 +34,7 @@ export default function McpToolContainers() {
     setMountPath(def.mountPath)
     setMemoryMb(def.memoryMb ? String(def.memoryMb) : '')
     setCpus(def.cpus ? String(def.cpus) : '')
+    setShmSizeMb(def.shmSizeMb ? String(def.shmSizeMb) : '')
     setDockerfile(def.dockerfile)
     setImgMode(def.dockerfile.trim() ? 'dockerfile' : 'image')
     setBuildOut('')
@@ -96,6 +98,7 @@ export default function McpToolContainers() {
       mountPath,
       memoryMb: memoryMb ? Number(memoryMb) : 0,
       cpus: cpus ? Number(cpus) : 0,
+      shmSizeMb: shmSizeMb ? Number(shmSizeMb) : 0,
       dockerfile: imgMode === 'dockerfile' ? dockerfile : '',
     })
   }
@@ -280,6 +283,10 @@ export default function McpToolContainers() {
               <div className="field">
                 <label>CPUs (blank = none)</label>
                 <input value={cpus} onChange={(e) => setCpus(e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Shared memory (/dev/shm) MB (blank = Docker default ~64MB)</label>
+                <input value={shmSizeMb} onChange={(e) => setShmSizeMb(e.target.value)} />
               </div>
             </div>
 

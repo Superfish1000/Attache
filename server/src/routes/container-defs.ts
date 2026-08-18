@@ -78,6 +78,12 @@ function applyBody(def: ContainerDef, body: Partial<ContainerDef>): string | nul
     if (c) def.cpus = c
     else delete def.cpus
   }
+  if (body.shmSizeMb !== undefined) {
+    const s = Number(body.shmSizeMb)
+    if (s && (!Number.isInteger(s) || s < 1)) return 'shmSizeMb must be an integer >= 1 (0 clears)'
+    if (s) def.shmSizeMb = s
+    else delete def.shmSizeMb
+  }
   if (body.files !== undefined) {
     const err = validateFiles(body.files)
     if (err) return err

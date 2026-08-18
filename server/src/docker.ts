@@ -445,6 +445,7 @@ export async function startAgentContainer(agent: Agent): Promise<ContainerInfo> 
         : {}),
       ...(cfg.memoryMb ? { Memory: cfg.memoryMb * 1024 * 1024 } : {}),
       ...(cfg.cpus ? { NanoCpus: Math.round(cfg.cpus * 1e9) } : {}),
+      ...(cfg.shmSizeMb ? { ShmSize: cfg.shmSizeMb * 1024 * 1024 } : {}),
     },
   })
   await container.start()
@@ -843,6 +844,7 @@ export async function startToolContainer(instance: McpToolInstance): Promise<Con
       ...(db.settings.docker.securityOpt.length ? { SecurityOpt: db.settings.docker.securityOpt } : {}),
       ...(config.memoryMb ? { Memory: config.memoryMb * 1024 * 1024 } : {}),
       ...(config.cpus ? { NanoCpus: Math.round(config.cpus * 1e9) } : {}),
+      ...(config.shmSizeMb ? { ShmSize: config.shmSizeMb * 1024 * 1024 } : {}),
     },
   })
   await container.start()

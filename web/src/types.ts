@@ -22,6 +22,7 @@ export interface AgentConfig {
   ports: Record<string, number>
   memoryMb?: number
   cpus?: number
+  shmSizeMb?: number
 }
 
 export interface Agent {
@@ -70,6 +71,7 @@ export interface ContainerDef {
   containerPorts: number[]
   memoryMb?: number
   cpus?: number
+  shmSizeMb?: number
   files: ContainerFileDef[]
   mcpServers: McpServerDef[]
   mcpProvisionCommand: string
@@ -89,6 +91,7 @@ export interface McpToolContainerDef {
   mountPath: string
   memoryMb?: number
   cpus?: number
+  shmSizeMb?: number
   dockerfile: string
   createdAt: string
 }
@@ -103,6 +106,7 @@ export interface McpToolInstanceConfig {
   mountPath: string
   memoryMb?: number
   cpus?: number
+  shmSizeMb?: number
 }
 
 export interface McpToolInstance {

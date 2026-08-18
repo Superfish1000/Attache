@@ -125,6 +125,12 @@ function applyBody(
       if (cp) instance.config.cpus = cp
       else delete instance.config.cpus
     }
+    if (c.shmSizeMb !== undefined) {
+      const s = Number(c.shmSizeMb)
+      if (s && (!Number.isInteger(s) || s < 1)) return 'config.shmSizeMb must be an integer >= 1 (0 clears)'
+      if (s) instance.config.shmSizeMb = s
+      else delete instance.config.shmSizeMb
+    }
   }
   if (instance.config.publishToHost) {
     const missing = instance.config.containerPorts.filter((cp) => !(String(cp) in instance.config.hostPorts))
@@ -174,6 +180,7 @@ export default async function mcpToolInstanceRoutes(app: FastifyInstance) {
         mountPath: def.mountPath,
         ...(def.memoryMb ? { memoryMb: def.memoryMb } : {}),
         ...(def.cpus ? { cpus: def.cpus } : {}),
+        ...(def.shmSizeMb ? { shmSizeMb: def.shmSizeMb } : {}),
       },
       createdAt: new Date().toISOString(),
     }

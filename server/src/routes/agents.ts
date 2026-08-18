@@ -137,6 +137,14 @@ export default async function agentRoutes(app: FastifyInstance) {
         if (c) agent.config.cpus = c
         else delete agent.config.cpus
       }
+      if (config.shmSizeMb !== undefined) {
+        const s = Number(config.shmSizeMb)
+        if (s && (!Number.isInteger(s) || s < 1)) {
+          return reply.code(400).send({ error: 'config.shmSizeMb must be an integer >= 1 (0 clears)' })
+        }
+        if (s) agent.config.shmSizeMb = s
+        else delete agent.config.shmSizeMb
+      }
     }
     save()
     return agent

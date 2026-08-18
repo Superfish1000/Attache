@@ -23,6 +23,7 @@ export default function McpToolInstances() {
   const [mountPath, setMountPath] = useState('')
   const [memoryMb, setMemoryMb] = useState('')
   const [cpus, setCpus] = useState('')
+  const [shmSizeMb, setShmSizeMb] = useState('')
   const [logs, setLogs] = useState<string | null>(null)
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
@@ -76,6 +77,7 @@ export default function McpToolInstances() {
     setMountPath(inst.config.mountPath)
     setMemoryMb(inst.config.memoryMb ? String(inst.config.memoryMb) : '')
     setCpus(inst.config.cpus ? String(inst.config.cpus) : '')
+    setShmSizeMb(inst.config.shmSizeMb ? String(inst.config.shmSizeMb) : '')
   }
 
   const createInstance = async () => {
@@ -114,6 +116,7 @@ export default function McpToolInstances() {
           mountPath,
           memoryMb: memoryMb ? Number(memoryMb) : 0,
           cpus: cpus ? Number(cpus) : 0,
+          shmSizeMb: shmSizeMb ? Number(shmSizeMb) : 0,
         },
       })
       flash('Instance saved')
@@ -317,6 +320,10 @@ export default function McpToolInstances() {
                               <div className="field">
                                 <label>CPUs (blank = none)</label>
                                 <input value={cpus} onChange={(e) => setCpus(e.target.value)} />
+                              </div>
+                              <div className="field">
+                                <label>Shared memory (/dev/shm) MB (blank = Docker default ~64MB)</label>
+                                <input value={shmSizeMb} onChange={(e) => setShmSizeMb(e.target.value)} />
                               </div>
                             </div>
                             <label className="check-row">

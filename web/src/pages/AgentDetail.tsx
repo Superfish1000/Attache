@@ -30,6 +30,7 @@ export default function AgentDetail() {
   const [portsText, setPortsText] = useState('{}')
   const [memoryMb, setMemoryMb] = useState('')
   const [cpus, setCpus] = useState('')
+  const [shmSizeMb, setShmSizeMb] = useState('')
   const [docs, setDocs] = useState<AgentDocInfo[]>([])
   const [docText, setDocText] = useState<Record<string, string>>({})
   const [docLoaded, setDocLoaded] = useState<Record<string, boolean>>({})
@@ -66,6 +67,7 @@ export default function AgentDetail() {
         setPortsText(JSON.stringify(a.config.ports))
         setMemoryMb(a.config.memoryMb ? String(a.config.memoryMb) : '')
         setCpus(a.config.cpus ? String(a.config.cpus) : '')
+        setShmSizeMb(a.config.shmSizeMb ? String(a.config.shmSizeMb) : '')
         setDocs(docsRes.docs)
         setDocLoaded({})
         setDocText({})
@@ -124,6 +126,7 @@ export default function AgentDetail() {
           ports,
           memoryMb: memoryMb ? Number(memoryMb) : 0,
           cpus: cpus ? Number(cpus) : 0,
+          shmSizeMb: shmSizeMb ? Number(shmSizeMb) : 0,
         },
       })
       setAgent(updated)
@@ -546,6 +549,10 @@ export default function AgentDetail() {
           <div className="field">
             <label>CPU limit (blank = none)</label>
             <input value={cpus} disabled={!admin} onChange={(e) => setCpus(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Shared memory (/dev/shm) MB (blank = Docker default ~64MB)</label>
+            <input value={shmSizeMb} disabled={!admin} onChange={(e) => setShmSizeMb(e.target.value)} />
           </div>
         </div>
         {admin && (

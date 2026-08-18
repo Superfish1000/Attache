@@ -26,6 +26,7 @@ export default function Containers() {
   const [envText, setEnvText] = useState('{}')
   const [memoryMb, setMemoryMb] = useState('')
   const [cpus, setCpus] = useState('')
+  const [shmSizeMb, setShmSizeMb] = useState('')
   const [files, setFiles] = useState<ContainerFileDef[]>([])
   const [mcpServers, setMcpServers] = useState<McpServerDef[]>([])
   const [mcpCmd, setMcpCmd] = useState('')
@@ -49,6 +50,7 @@ export default function Containers() {
     setEnvText(JSON.stringify(def.env, null, 2))
     setMemoryMb(def.memoryMb ? String(def.memoryMb) : '')
     setCpus(def.cpus ? String(def.cpus) : '')
+    setShmSizeMb(def.shmSizeMb ? String(def.shmSizeMb) : '')
     setFiles(def.files.map((f) => ({ ...f })))
     setMcpServers(def.mcpServers.map((s) => ({ ...s })))
     setMcpCmd(def.mcpProvisionCommand)
@@ -128,6 +130,7 @@ export default function Containers() {
       env,
       memoryMb: memoryMb ? Number(memoryMb) : 0,
       cpus: cpus ? Number(cpus) : 0,
+      shmSizeMb: shmSizeMb ? Number(shmSizeMb) : 0,
       files,
       mcpServers,
       mcpProvisionCommand: mcpCmd,
@@ -360,6 +363,10 @@ export default function Containers() {
               <div className="field">
                 <label>CPUs (blank = none)</label>
                 <input value={cpus} onChange={(e) => setCpus(e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Shared memory (/dev/shm) MB (blank = Docker default ~64MB)</label>
+                <input value={shmSizeMb} onChange={(e) => setShmSizeMb(e.target.value)} />
               </div>
             </div>
             <div className="field" style={{ marginTop: 14 }}>
