@@ -23,6 +23,17 @@ body {
   font: 14px/1.5 'Segoe UI', system-ui, sans-serif;
 }
 
+/* No color was ever set here, so plain links fell back to the browser
+   default (blue unvisited, dark purple visited) -- unreadable against this
+   dark theme. .sidebar nav a's own rules are more specific and still win. */
+a {
+  color: var(--accent);
+}
+
+a:hover {
+  color: var(--text);
+}
+
 .layout {
   display: flex;
   min-height: 100vh;
