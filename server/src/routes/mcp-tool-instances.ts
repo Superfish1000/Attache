@@ -13,9 +13,36 @@ import {
   toolContainerInfo,
   toolContainerLogs,
 } from '../docker.js'
-import type { McpToolInstance } from '../types.js'
+import type { McpToolInstance, McpToolInstanceConfig } from '../types.js'
 
 const ALIAS_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/
+
+/** Adds the owning definition's name — non-admins have no other way to learn it (GET /api/mcp-tools is admin-only). */
+function withDefName(instance: McpToolInstance): McpToolInstance {
+  return { ...instance, defName: db.mcpTools.find((d) => d.id === instance.defId)?.name }
+}
+
+/**
+ * Non-admin view: only what's needed to connect. Strips env, mount path,
+ * command, and resource limits — those can hold secrets or internal
+ * implementation details that aren't this feature's "everyone can see
+ * connection info" promise.
+ */
+function publicView(
+  instance: McpToolInstance,
+): Pick<McpToolInstance, 'id' | 'defId' | 'defName' | 'name' | 'networkAlias' | 'createdAt'> & {
+  config: Pick<McpToolInstanceConfig, 'containerPorts'>
+} {
+  return {
+    id: instance.id,
+    defId: instance.defId,
+    defName: db.mcpTools.find((d) => d.id === instance.defId)?.name,
+    name: instance.name,
+    networkAlias: instance.networkAlias,
+    config: { containerPorts: instance.config.containerPorts },
+    createdAt: instance.createdAt,
+  }
+}
 
 /**
  * Validates/merges body fields onto instance. Returns an error string or null.
@@ -107,12 +134,15 @@ function applyBody(
 }
 
 export default async function mcpToolInstanceRoutes(app: FastifyInstance) {
-  app.get('/', async () => ({ instances: db.mcpToolInstances }))
+  app.get('/', async (req) => {
+    const admin = req.user!.role === 'admin'
+    return { instances: db.mcpToolInstances.map((i) => (admin ? withDefName(i) : publicView(i))) }
+  })
 
   app.get('/:id', async (req, reply) => {
     const instance = db.mcpToolInstances.find((i) => i.id === (req.params as { id: string }).id)
     if (!instance) return reply.code(404).send({ error: 'instance not found' })
-    return instance
+    return req.user!.role === 'admin' ? withDefName(instance) : publicView(instance)
   })
 
   app.post('/', async (req, reply) => {

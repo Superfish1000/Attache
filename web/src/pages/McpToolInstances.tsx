@@ -58,14 +58,14 @@ export default function McpToolInstances() {
     setTimeout(() => setNote(''), 2500)
   }
 
-  const defName = (defId: string) => defs.find((d) => d.id === defId)?.name ?? '(deleted definition)'
-
   const expand = (inst: McpToolInstance) => {
     if (expandedId === inst.id) {
       setExpandedId('')
       return
     }
     setExpandedId(inst.id)
+    setLogs(null)
+    if (!admin) return // non-admin responses only carry config.containerPorts — nothing else here to populate
     setName(inst.name)
     setNetworkAlias(inst.networkAlias)
     setImage(inst.config.image)
@@ -76,7 +76,6 @@ export default function McpToolInstances() {
     setMountPath(inst.config.mountPath)
     setMemoryMb(inst.config.memoryMb ? String(inst.config.memoryMb) : '')
     setCpus(inst.config.cpus ? String(inst.config.cpus) : '')
-    setLogs(null)
   }
 
   const createInstance = async () => {
@@ -224,7 +223,7 @@ export default function McpToolInstances() {
                 <Fragment key={inst.id}>
                   <tr>
                     <td>{inst.name}</td>
-                    <td className="muted">{defName(inst.defId)}</td>
+                    <td className="muted">{inst.defName ?? '(unknown)'}</td>
                     <td className="mono">
                       {inst.networkAlias} <CopyButton text={inst.networkAlias} />
                     </td>
@@ -358,8 +357,8 @@ export default function McpToolInstances() {
                         ) : (
                           <div className="panel" style={{ margin: '8px 0' }}>
                             <p className="muted" style={{ margin: 0 }}>
-                              Based on definition <b>{defName(inst.defId)}</b>. Connect using the alias and
-                              ports above — configuration and controls are admin-only.
+                              Based on definition <b>{inst.defName ?? '(unknown)'}</b>. Connect using the alias
+                              and ports above — configuration and controls are admin-only.
                             </p>
                           </div>
                         )}

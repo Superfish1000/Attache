@@ -160,6 +160,8 @@ export interface McpToolInstance {
   networkAlias: string
   config: McpToolInstanceConfig
   createdAt: string
+  /** Response-only convenience (not persisted): the owning definition's name, so non-admins — who can't read /api/mcp-tools — can still show what this instance is based on. */
+  defName?: string
 }
 
 export interface Agent {

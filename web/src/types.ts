@@ -112,6 +112,8 @@ export interface McpToolInstance {
   networkAlias: string
   config: McpToolInstanceConfig
   createdAt: string
+  /** Response-only convenience: the owning definition's name. Non-admin responses only include config.containerPorts (the rest is redacted server-side), so treat other config fields as absent unless you know this came from an admin request. */
+  defName?: string
 }
 
 export interface AgentDocInfo {
