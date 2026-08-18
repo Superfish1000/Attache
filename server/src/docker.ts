@@ -2,7 +2,7 @@ import Docker from 'dockerode'
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { Writable } from 'node:stream'
-import type { Agent, McpToolContainerDef, User } from './types.js'
+import type { Agent, McpToolInstance, User } from './types.js'
 import {
   CRON_FILE_RE,
   agentDir,
@@ -789,52 +789,55 @@ export async function toolContainerInfo(id: string): Promise<ContainerInfo> {
   }
 }
 
-export async function startToolContainer(def: McpToolContainerDef): Promise<ContainerInfo> {
+export async function startToolContainer(instance: McpToolInstance): Promise<ContainerInfo> {
   const docker = getDocker()
-  const info = await toolContainerInfo(def.id)
+  const { config } = instance
+  const info = await toolContainerInfo(instance.id)
   if (info.exists) {
     try {
-      await docker.getContainer(toolNameFor(def.id)).start()
+      await docker.getContainer(toolNameFor(instance.id)).start()
     } catch (err) {
       if ((err as { statusCode?: number }).statusCode !== 304) throw err
     }
-    await attachToNetwork((await docker.getContainer(toolNameFor(def.id)).inspect()).Id, [def.networkAlias])
-    return toolContainerInfo(def.id)
+    await attachToNetwork((await docker.getContainer(toolNameFor(instance.id)).inspect()).Id, [
+      instance.networkAlias,
+    ])
+    return toolContainerInfo(instance.id)
   }
-  await pullIfMissing(docker, def.image)
+  await pullIfMissing(docker, config.image)
   const exposed: Record<string, object> = {}
   const bindings: Record<string, Array<{ HostPort: string }>> = {}
-  for (const cp of def.containerPorts) {
+  for (const cp of config.containerPorts) {
     exposed[`${cp}/tcp`] = {}
-    const hostPort = def.hostPorts[String(cp)]
-    if (def.publishToHost && hostPort) bindings[`${cp}/tcp`] = [{ HostPort: String(hostPort) }]
+    const hostPort = config.hostPorts[String(cp)]
+    if (config.publishToHost && hostPort) bindings[`${cp}/tcp`] = [{ HostPort: String(hostPort) }]
   }
-  const mountPath = def.mountPath.trim()
+  const mountPath = config.mountPath.trim()
   const binds: string[] = []
   if (mountPath) {
-    const bindSrc = resolve(mcpToolDir(def.id)).replace(/\\/g, '/')
-    mkdirSync(mcpToolDir(def.id), { recursive: true })
+    const bindSrc = resolve(mcpToolDir(instance.id)).replace(/\\/g, '/')
+    mkdirSync(mcpToolDir(instance.id), { recursive: true })
     binds.push(`${bindSrc}:${mountPath}`)
   }
   const container = await docker.createContainer({
-    name: toolNameFor(def.id),
-    Image: def.image,
-    Cmd: def.command,
-    Env: Object.entries(def.env).map(([k, v]) => `${k}=${v}`),
-    Labels: { 'attache.managed': 'true', 'attache.mcp-tool.id': def.id },
+    name: toolNameFor(instance.id),
+    Image: config.image,
+    Cmd: config.command,
+    Env: Object.entries(config.env).map(([k, v]) => `${k}=${v}`),
+    Labels: { 'attache.managed': 'true', 'attache.mcp-tool.id': instance.id },
     ExposedPorts: exposed,
     HostConfig: {
       Binds: binds,
       PortBindings: bindings,
       RestartPolicy: { Name: db.settings.docker.restartPolicy },
       ...(db.settings.docker.securityOpt.length ? { SecurityOpt: db.settings.docker.securityOpt } : {}),
-      ...(def.memoryMb ? { Memory: def.memoryMb * 1024 * 1024 } : {}),
-      ...(def.cpus ? { NanoCpus: Math.round(def.cpus * 1e9) } : {}),
+      ...(config.memoryMb ? { Memory: config.memoryMb * 1024 * 1024 } : {}),
+      ...(config.cpus ? { NanoCpus: Math.round(config.cpus * 1e9) } : {}),
     },
   })
   await container.start()
-  await attachToNetwork(container.id, [def.networkAlias])
-  return toolContainerInfo(def.id)
+  await attachToNetwork(container.id, [instance.networkAlias])
+  return toolContainerInfo(instance.id)
 }
 
 export async function stopToolContainer(id: string): Promise<ContainerInfo> {
@@ -844,6 +847,12 @@ export async function stopToolContainer(id: string): Promise<ContainerInfo> {
     const code = (err as { statusCode?: number }).statusCode
     if (code !== 304 && code !== 404) throw err
   }
+  return toolContainerInfo(id)
+}
+
+/** In-place restart of the existing container — does not pick up config/image changes (use regenerate for that). */
+export async function restartToolContainer(id: string): Promise<ContainerInfo> {
+  await getDocker().getContainer(toolNameFor(id)).restart({ t: 5 })
   return toolContainerInfo(id)
 }
 
