@@ -9,6 +9,7 @@ import AgentDetail from './pages/AgentDetail'
 import Integrations from './pages/Integrations'
 import Settings from './pages/Settings'
 import Containers from './pages/Containers'
+import McpToolInstances from './pages/McpToolInstances'
 import Chat from './pages/Chat'
 import Login from './pages/Login'
 import Reset from './pages/Reset'
@@ -54,6 +55,7 @@ function Shell() {
           {admin && <NavLink to="/users">Users</NavLink>}
           <NavLink to="/agents">{admin ? 'Agents' : 'My Agents'}</NavLink>
           {admin && <NavLink to="/containers">Containers</NavLink>}
+          <NavLink to="/mcp-tools">MCP Tools</NavLink>
           {admin && <NavLink to="/integrations">Integrations</NavLink>}
           {/* Tools (MCP library) hidden until it's more than a stub — page kept at pages/Tools.tsx */}
           {admin && <NavLink to="/settings">Settings</NavLink>}
@@ -91,6 +93,7 @@ function Shell() {
               </AdminRoute>
             }
           />
+          <Route path="/mcp-tools" element={<McpToolInstances />} />
           <Route
             path="/integrations"
             element={
