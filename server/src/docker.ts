@@ -349,6 +349,16 @@ async function ensureAttacheNetwork(docker: Docker): Promise<void> {
   }
 }
 
+/** Whether the shared Attaché network currently exists — for display only; container starts create it on demand via ensureAttacheNetwork. */
+export async function attacheNetworkExists(): Promise<boolean> {
+  try {
+    await getDocker().getNetwork(ATTACHE_NETWORK).inspect()
+    return true
+  } catch {
+    return false
+  }
+}
+
 /**
  * Attaches a container to the shared Attaché network, optionally under one
  * or more DNS aliases other containers can reach it by. Best-effort and

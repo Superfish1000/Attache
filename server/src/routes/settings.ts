@@ -2,8 +2,9 @@ import type { FastifyInstance } from 'fastify'
 import { DATA_DIR, db, save } from '../store.js'
 import { requireAdmin } from '../auth.js'
 import { sendMail, verifySmtp } from '../mailer.js'
+import { ATTACHE_NETWORK, attacheNetworkExists } from '../docker.js'
 
-function view() {
+async function view() {
   const { server, docker, security, email } = db.settings
   return {
     server,
@@ -18,6 +19,9 @@ function view() {
       hasPass: Boolean(email.pass),
     },
     dataDir: DATA_DIR,
+    // shared bridge network agent/tool containers use to reach each other by
+    // alias — created on demand at first container start, not user-configurable
+    network: { name: ATTACHE_NETWORK, exists: await attacheNetworkExists() },
   }
 }
 

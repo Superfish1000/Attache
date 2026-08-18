@@ -5,6 +5,7 @@ import type { SettingsView, UpdateCheck, UpdateResult } from '../types'
 
 export default function Settings() {
   const [dataDir, setDataDir] = useState('')
+  const [network, setNetwork] = useState<SettingsView['network'] | null>(null)
   const [host, setHost] = useState('')
   const [port, setPort] = useState('')
   const [publicBaseUrl, setPublicBaseUrl] = useState('')
@@ -101,6 +102,7 @@ export default function Settings() {
 
   const apply = (s: SettingsView) => {
     setDataDir(s.dataDir)
+    setNetwork(s.network)
     setHost(s.server.host)
     setPort(String(s.server.port))
     setPublicBaseUrl(s.server.publicBaseUrl)
@@ -380,6 +382,16 @@ export default function Settings() {
           <input type="checkbox" checked={autoPull} onChange={(e) => setAutoPull(e.target.checked)} />
           <span>Auto-pull missing images when starting a container</span>
         </label>
+        {network && (
+          <p className="muted" style={{ marginBottom: 0 }}>
+            Shared container network: <span className="mono">{network.name}</span>{' '}
+            {network.exists ? <Chip tone="ok">exists</Chip> : <Chip tone="off">not created yet</Chip>} — agent
+            and MCP tool containers join this network automatically and reach each other by name
+            (see <b>MCP Tools</b>). Connect another container to it manually with{' '}
+            <span className="mono">docker network connect {network.name} &lt;container&gt;</span> for
+            inter-container linking.
+          </p>
+        )}
       </div>
 
       <h2>Security</h2>
