@@ -166,53 +166,70 @@ function load(): { db: DB; migrated: boolean } {
   // def (fresh id) + an instance that KEEPS the original id, because that id
   // is baked into the already-running Docker container's name
   // (attache-tool-<id>) — see plan Task 1 / spec migration section.
+  //
+  // MUST run only once: this is gated on raw.mcpToolInstances being absent
+  // (the pre-split schema never had that field). Once split, db.json always
+  // has both mcpTools and mcpToolInstances, so every later boot falls into
+  // the else-branch and loads them as-is. Splitting unconditionally on every
+  // boot was a real bug caught in testing — it re-split the ALREADY-TRIMMED
+  // mcpTools (no networkAlias/hostPorts left to read) into a fresh def id +
+  // exactly one blank-alias instance per def, discarding every other real
+  // instance and orphaning their running Docker containers.
   type LegacyMcpToolRow = McpToolContainerDef &
     Partial<{
       networkAlias: string
       hostPorts: Record<string, number>
       publishToHost: boolean
     }>
-  const legacyMcpTools: LegacyMcpToolRow[] = raw.mcpTools ?? []
-  const mcpTools: McpToolContainerDef[] = []
-  const mcpToolInstances: McpToolInstance[] = []
-  for (const t of legacyMcpTools) {
-    const image = t.image ?? ''
-    const command = t.command ?? []
-    const env = t.env ?? {}
-    const containerPorts = t.containerPorts ?? []
-    const mountPath = t.mountPath ?? ''
-    const defId = randomUUID().split('-')[0]
-    mcpTools.push({
-      id: defId,
-      name: t.name,
-      image,
-      command,
-      env,
-      containerPorts,
-      mountPath,
-      ...(t.memoryMb ? { memoryMb: t.memoryMb } : {}),
-      ...(t.cpus ? { cpus: t.cpus } : {}),
-      dockerfile: t.dockerfile ?? '',
-      createdAt: t.createdAt,
-    })
-    mcpToolInstances.push({
-      id: t.id,
-      defId,
-      name: t.name,
-      networkAlias: t.networkAlias ?? '',
-      config: {
+  let mcpTools: McpToolContainerDef[]
+  let mcpToolInstances: McpToolInstance[]
+  if (raw.mcpToolInstances === undefined) {
+    migrated = true // must persist now — an unsaved split would re-run (and re-orphan instances) on the next boot
+    const legacyMcpTools: LegacyMcpToolRow[] = raw.mcpTools ?? []
+    mcpTools = []
+    mcpToolInstances = []
+    for (const t of legacyMcpTools) {
+      const image = t.image ?? ''
+      const command = t.command ?? []
+      const env = t.env ?? {}
+      const containerPorts = t.containerPorts ?? []
+      const mountPath = t.mountPath ?? ''
+      const defId = randomUUID().split('-')[0]
+      mcpTools.push({
+        id: defId,
+        name: t.name,
         image,
         command,
         env,
         containerPorts,
-        hostPorts: t.hostPorts ?? {},
-        publishToHost: t.publishToHost ?? false,
         mountPath,
         ...(t.memoryMb ? { memoryMb: t.memoryMb } : {}),
         ...(t.cpus ? { cpus: t.cpus } : {}),
-      },
-      createdAt: t.createdAt,
-    })
+        dockerfile: t.dockerfile ?? '',
+        createdAt: t.createdAt,
+      })
+      mcpToolInstances.push({
+        id: t.id,
+        defId,
+        name: t.name,
+        networkAlias: t.networkAlias ?? '',
+        config: {
+          image,
+          command,
+          env,
+          containerPorts,
+          hostPorts: t.hostPorts ?? {},
+          publishToHost: t.publishToHost ?? false,
+          mountPath,
+          ...(t.memoryMb ? { memoryMb: t.memoryMb } : {}),
+          ...(t.cpus ? { cpus: t.cpus } : {}),
+        },
+        createdAt: t.createdAt,
+      })
+    }
+  } else {
+    mcpTools = raw.mcpTools ?? []
+    mcpToolInstances = raw.mcpToolInstances ?? []
   }
 
   const db: DB = {
