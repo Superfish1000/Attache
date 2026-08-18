@@ -191,6 +191,16 @@ export default function McpToolInstances() {
       ? inst.config.containerPorts.map((p) => `http://${inst.networkAlias}:${p}`)
       : []
 
+  // Host-published address, reachable from outside the Docker network — same
+  // window.location.hostname pattern AgentDetail.tsx uses for agent ports.
+  // publishToHost auto-assigns a distinct host port per instance even when
+  // several instances share the same native container port (nextFreeHostPorts
+  // on the server scans every instance's hostPorts), so this never collides.
+  const externalAddresses = (inst: McpToolInstance) =>
+    inst.config.publishToHost
+      ? Object.values(inst.config.hostPorts).map((hp) => `http://${window.location.hostname}:${hp}`)
+      : []
+
   return (
     <>
       <h1>MCP Tools</h1>
@@ -231,6 +241,11 @@ export default function McpToolInstances() {
                       {reachableAt(inst).map((url) => (
                         <div key={url}>
                           {url} <CopyButton text={url} />
+                        </div>
+                      ))}
+                      {externalAddresses(inst).map((url) => (
+                        <div key={url} className="muted">
+                          external: {url} <CopyButton text={url} />
                         </div>
                       ))}
                     </td>
@@ -310,8 +325,17 @@ export default function McpToolInstances() {
                                 checked={publishToHost}
                                 onChange={(e) => setPublishToHost(e.target.checked)}
                               />
-                              <span className="muted">Also publish to a host port (for direct/admin access)</span>
+                              <span className="muted">
+                                Also publish to a host port (reachable from outside the container network —
+                                a distinct port is auto-assigned per instance, even if they share the same
+                                native port)
+                              </span>
                             </label>
+                            {externalAddresses(inst).length > 0 && (
+                              <p className="mono muted" style={{ marginTop: 4 }}>
+                                External: {externalAddresses(inst).join(' · ')}
+                              </p>
+                            )}
                             <div className="btn-row" style={{ marginTop: 14 }}>
                               <button className="btn btn-primary" disabled={busyId === inst.id} onClick={saveInstance}>
                                 Save

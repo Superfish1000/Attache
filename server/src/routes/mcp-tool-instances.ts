@@ -23,15 +23,16 @@ function withDefName(instance: McpToolInstance): McpToolInstance {
 }
 
 /**
- * Non-admin view: only what's needed to connect. Strips env, mount path,
- * command, and resource limits — those can hold secrets or internal
- * implementation details that aren't this feature's "everyone can see
- * connection info" promise.
+ * Non-admin view: only what's needed to connect — internal (network alias +
+ * container ports) and external (host-published ports, if any) addressing.
+ * Strips env, mount path, command, and resource limits — those can hold
+ * secrets or internal implementation details that aren't this feature's
+ * "everyone can see connection info" promise.
  */
 function publicView(
   instance: McpToolInstance,
 ): Pick<McpToolInstance, 'id' | 'defId' | 'defName' | 'name' | 'networkAlias' | 'createdAt'> & {
-  config: Pick<McpToolInstanceConfig, 'containerPorts'>
+  config: Pick<McpToolInstanceConfig, 'containerPorts' | 'hostPorts' | 'publishToHost'>
 } {
   return {
     id: instance.id,
@@ -39,7 +40,11 @@ function publicView(
     defName: db.mcpTools.find((d) => d.id === instance.defId)?.name,
     name: instance.name,
     networkAlias: instance.networkAlias,
-    config: { containerPorts: instance.config.containerPorts },
+    config: {
+      containerPorts: instance.config.containerPorts,
+      hostPorts: instance.config.hostPorts,
+      publishToHost: instance.config.publishToHost,
+    },
     createdAt: instance.createdAt,
   }
 }
