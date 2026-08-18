@@ -53,9 +53,7 @@ export default function Dashboard() {
             </div>
             <div className="card">
               <div className="card-label">MCP Tools</div>
-              <div className="card-value small">
-                {status.mcp.enabled ? <Chip tone="ok">enabled</Chip> : <Chip tone="off">stub</Chip>}
-              </div>
+              <div className="card-value">{status.counts.mcpToolInstances}</div>
             </div>
           </div>
           <div className="panel">

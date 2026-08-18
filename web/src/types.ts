@@ -127,7 +127,7 @@ export interface StatusResponse {
   docker: { available: boolean }
   o365: { configured: boolean; lastSync: string | null }
   mcp: { enabled: boolean }
-  counts: { users: number; agents: number }
+  counts: { users: number; agents: number; mcpToolInstances: number }
 }
 
 export interface ContainerState {
@@ -206,6 +206,8 @@ export interface SettingsView {
   }
   security: { sessionTtlHours: number }
   dataDir: string
+  /** Shared bridge network agent/tool containers use to reach each other by alias — created on demand, not user-configurable. */
+  network: { name: string; exists: boolean }
 }
 
 export interface UpdateCheck {

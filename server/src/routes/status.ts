@@ -12,7 +12,11 @@ export default async function statusRoutes(app: FastifyInstance) {
       docker: { available: await dockerAvailable() },
       o365: { configured: o365Configured(), lastSync: db.settings.lastO365Sync },
       mcp: { enabled: mcpStatus().enabled },
-      counts: { users: admin ? db.users.length : 1, agents: myAgents.length },
+      counts: {
+        users: admin ? db.users.length : 1,
+        agents: myAgents.length,
+        mcpToolInstances: db.mcpToolInstances.length,
+      },
     }
   })
 
