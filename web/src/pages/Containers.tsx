@@ -220,8 +220,8 @@ export default function Containers() {
     <>
       <h1>Containers</h1>
       <p className="subtitle">
-        Two kinds of containers: agent runtimes (one per user) and shared MCP tool servers (one
-        instance, reachable by any agent)
+        Two kinds of containers: agent runtimes (one per user) and reusable MCP tool templates —
+        spin up and manage running copies on the <b>MCP Tools</b> page
       </p>
       <ErrorBanner message={err} onDismiss={() => setErr('')} />
       {note && <div className="panel ok-note">{note}</div>}
