@@ -117,27 +117,48 @@ export interface ContainerDef {
   createdAt: string
 }
 
-/** A standalone container running MCP server software — decoupled from any agent. Definition IS the instance: one container per definition, admin-managed lifecycle. */
+/** A reusable MCP tool container template — image/runtime defaults instances are created from. */
 export interface McpToolContainerDef {
   id: string
   name: string
-  /** DNS-safe hostname other containers reach this one by on the shared Attaché network (e.g. "kb-search" -> http://kb-search:8080/...). Must be unique across all tool defs. Lowercase letters/digits/hyphens, can't start/end with a hyphen. */
-  networkAlias: string
   image: string
   command: string[]
   env: Record<string, string>
   /** Ports the server listens on inside the container. */
   containerPorts: number[]
-  /** containerPort -> hostPort; only populated when publishToHost is true. */
-  hostPorts: Record<string, number>
-  /** When true, also publish containerPorts to auto-assigned host ports for direct/admin access. Off by default — agents reach the container via networkAlias on the shared network, no host exposure needed. */
-  publishToHost: boolean
   /** Container path for persistent state; empty string = no data mount. */
   mountPath: string
   memoryMb?: number
   cpus?: number
   /** Optional Dockerfile; built the same way container definitions are (native build, falls back to run+commit emulation on daemons whose seccomp breaks builds). */
   dockerfile: string
+  createdAt: string
+}
+
+/** Per-instance runtime config, copied from the definition at creation and independently editable after — mirrors AgentConfig. */
+export interface McpToolInstanceConfig {
+  image: string
+  command: string[]
+  env: Record<string, string>
+  containerPorts: number[]
+  /** containerPort -> hostPort; only populated when publishToHost is true. */
+  hostPorts: Record<string, number>
+  /** When true, also publish containerPorts to auto-assigned host ports for direct/admin access. Off by default — other containers reach this instance via networkAlias on the shared network. */
+  publishToHost: boolean
+  mountPath: string
+  memoryMb?: number
+  cpus?: number
+}
+
+/** One running (or stoppable) copy of an MCP tool container definition — mirrors Agent/ContainerDef. */
+export interface McpToolInstance {
+  id: string
+  /** Which definition this instance was created from. */
+  defId: string
+  name: string
+  /** DNS-safe hostname other containers reach this instance by on the shared Attaché network (e.g. "brave-search-2" -> http://brave-search-2:8080/...). Must be unique across all tool instances. Lowercase letters/digits/hyphens, can't start/end with a hyphen. */
+  networkAlias: string
+  config: McpToolInstanceConfig
   createdAt: string
 }
 

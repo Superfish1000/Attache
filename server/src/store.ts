@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import type { Agent, ContainerDef, McpServerDef, McpToolContainerDef, ResetToken, Session, Settings, User } from './types.js'
+import type { Agent, ContainerDef, McpServerDef, McpToolContainerDef, McpToolInstance, ResetToken, Session, Settings, User } from './types.js'
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 export const DATA_DIR = process.env.ATTACHE_DATA_DIR ?? join(ROOT, 'data')
@@ -15,6 +15,7 @@ interface DB {
   agents: Agent[]
   containers: ContainerDef[]
   mcpTools: McpToolContainerDef[]
+  mcpToolInstances: McpToolInstance[]
   sessions: Session[]
   settings: Settings
   resetTokens: ResetToken[]
@@ -73,6 +74,7 @@ const defaults = (): DB => ({
   agents: [],
   containers: [],
   mcpTools: [],
+  mcpToolInstances: [],
   sessions: [],
   resetTokens: [],
   settings: {
@@ -160,6 +162,59 @@ function load(): { db: DB; migrated: boolean } {
   }
   if (!defaultContainerId && containers[0]) defaultContainerId = containers[0].id
 
+  // split legacy combined mcpTools rows (def+instance in one) into a trimmed
+  // def (fresh id) + an instance that KEEPS the original id, because that id
+  // is baked into the already-running Docker container's name
+  // (attache-tool-<id>) — see plan Task 1 / spec migration section.
+  type LegacyMcpToolRow = McpToolContainerDef &
+    Partial<{
+      networkAlias: string
+      hostPorts: Record<string, number>
+      publishToHost: boolean
+    }>
+  const legacyMcpTools: LegacyMcpToolRow[] = raw.mcpTools ?? []
+  const mcpTools: McpToolContainerDef[] = []
+  const mcpToolInstances: McpToolInstance[] = []
+  for (const t of legacyMcpTools) {
+    const image = t.image ?? ''
+    const command = t.command ?? []
+    const env = t.env ?? {}
+    const containerPorts = t.containerPorts ?? []
+    const mountPath = t.mountPath ?? ''
+    const defId = randomUUID().split('-')[0]
+    mcpTools.push({
+      id: defId,
+      name: t.name,
+      image,
+      command,
+      env,
+      containerPorts,
+      mountPath,
+      ...(t.memoryMb ? { memoryMb: t.memoryMb } : {}),
+      ...(t.cpus ? { cpus: t.cpus } : {}),
+      dockerfile: t.dockerfile ?? '',
+      createdAt: t.createdAt,
+    })
+    mcpToolInstances.push({
+      id: t.id,
+      defId,
+      name: t.name,
+      networkAlias: t.networkAlias ?? '',
+      config: {
+        image,
+        command,
+        env,
+        containerPorts,
+        hostPorts: t.hostPorts ?? {},
+        publishToHost: t.publishToHost ?? false,
+        mountPath,
+        ...(t.memoryMb ? { memoryMb: t.memoryMb } : {}),
+        ...(t.cpus ? { cpus: t.cpus } : {}),
+      },
+      createdAt: t.createdAt,
+    })
+  }
+
   const db: DB = {
     // role/disabled backfill for records written before auth/O365-polling existed
     users: (raw.users ?? []).map(
@@ -185,24 +240,8 @@ function load(): { db: DB; migrated: boolean } {
       }),
     ),
     containers,
-    // field backfill for tool container defs saved before newer fields existed
-    mcpTools: (raw.mcpTools ?? []).map(
-      (
-        t: Omit<
-          McpToolContainerDef,
-          'hostPorts' | 'publishToHost' | 'mountPath' | 'env' | 'command' | 'containerPorts'
-        > &
-          Partial<McpToolContainerDef>,
-      ) => ({
-        ...t,
-        hostPorts: t.hostPorts ?? {},
-        publishToHost: t.publishToHost ?? false,
-        mountPath: t.mountPath ?? '',
-        env: t.env ?? {},
-        command: t.command ?? [],
-        containerPorts: t.containerPorts ?? [],
-      }),
-    ),
+    mcpTools,
+    mcpToolInstances,
     sessions: raw.sessions ?? [],
     // prune dead reset tokens at boot
     resetTokens: ((raw.resetTokens ?? []) as ResetToken[]).filter(
@@ -248,7 +287,8 @@ export function newId(): string {
     db.users.some((u) => u.id === id) ||
     db.agents.some((a) => a.id === id) ||
     db.containers.some((c) => c.id === id) ||
-    db.mcpTools.some((t) => t.id === id)
+    db.mcpTools.some((t) => t.id === id) ||
+    db.mcpToolInstances.some((t) => t.id === id)
   ) {
     id = randomUUID().split('-')[0]
   }

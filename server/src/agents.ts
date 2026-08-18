@@ -9,7 +9,7 @@ import type { Agent, AgentConfig, ContainerDef, ContainerFileDef, User } from '.
 export function nextFreeHostPorts(count: number): number[] {
   const used = new Set<number>()
   for (const a of db.agents) for (const p of Object.values(a.config.ports)) used.add(p)
-  for (const t of db.mcpTools) for (const p of Object.values(t.hostPorts)) used.add(p)
+  for (const t of db.mcpToolInstances) for (const p of Object.values(t.config.hostPorts)) used.add(p)
   const out: number[] = []
   let candidate = db.settings.docker.portRangeStart
   while (out.length < count) {
