@@ -82,7 +82,18 @@ export interface ContainerDef {
 export interface McpToolContainerDef {
   id: string
   name: string
-  networkAlias: string
+  image: string
+  command: string[]
+  env: Record<string, string>
+  containerPorts: number[]
+  mountPath: string
+  memoryMb?: number
+  cpus?: number
+  dockerfile: string
+  createdAt: string
+}
+
+export interface McpToolInstanceConfig {
   image: string
   command: string[]
   env: Record<string, string>
@@ -92,7 +103,14 @@ export interface McpToolContainerDef {
   mountPath: string
   memoryMb?: number
   cpus?: number
-  dockerfile: string
+}
+
+export interface McpToolInstance {
+  id: string
+  defId: string
+  name: string
+  networkAlias: string
+  config: McpToolInstanceConfig
   createdAt: string
 }
 

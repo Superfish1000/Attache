@@ -9,6 +9,7 @@ import type {
   McpProvisionResult,
   McpStatus,
   McpToolContainerDef,
+  McpToolInstance,
   MeResponse,
   O365Member,
   O365SettingsView,
@@ -151,11 +152,20 @@ export const api = {
     remove: (id: string) => req<void>(`/api/mcp-tools/${id}`, { method: 'DELETE' }),
     build: (id: string) =>
       req<{ ok: boolean; method: string; output: string }>(`/api/mcp-tools/${id}/build`, { method: 'POST' }),
-    container: (id: string) => req<ContainerState>(`/api/mcp-tools/${id}/container`),
-    containerLogs: (id: string) => req<{ logs: string }>(`/api/mcp-tools/${id}/container/logs`),
-    containerAction: (id: string, action: 'start' | 'stop' | 'remove') =>
-      req<ContainerState>(`/api/mcp-tools/${id}/container/${action}`, { method: 'POST' }),
-    regenerate: (id: string) => req<ContainerState>(`/api/mcp-tools/${id}/container/regenerate`, { method: 'POST' }),
+  },
+  mcpToolInstances: {
+    list: () => req<{ instances: McpToolInstance[] }>('/api/mcp-tool-instances'),
+    get: (id: string) => req<McpToolInstance>(`/api/mcp-tool-instances/${id}`),
+    create: (body: { defId: string; name?: string; networkAlias?: string }) =>
+      req<McpToolInstance>('/api/mcp-tool-instances', json('POST', body)),
+    update: (id: string, patch: Partial<Omit<McpToolInstance, 'config'>> & { config?: Partial<McpToolInstance['config']> }) =>
+      req<McpToolInstance>(`/api/mcp-tool-instances/${id}`, json('PATCH', patch)),
+    remove: (id: string) => req<void>(`/api/mcp-tool-instances/${id}`, { method: 'DELETE' }),
+    container: (id: string) => req<ContainerState>(`/api/mcp-tool-instances/${id}/container`),
+    containerLogs: (id: string) => req<{ logs: string }>(`/api/mcp-tool-instances/${id}/container/logs`),
+    containerAction: (id: string, action: 'start' | 'stop' | 'restart' | 'remove') =>
+      req<ContainerState>(`/api/mcp-tool-instances/${id}/container/${action}`, { method: 'POST' }),
+    regenerate: (id: string) => req<ContainerState>(`/api/mcp-tool-instances/${id}/regenerate`, { method: 'POST' }),
   },
   settings: {
     get: () => req<SettingsView>('/api/settings'),

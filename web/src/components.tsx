@@ -309,6 +309,25 @@ export function Chip({ tone, children }: { tone: ChipTone; children: ReactNode }
   return <span className={`chip chip-${tone}`}>{children}</span>
 }
 
+/** Copies `text` to the clipboard on click; briefly shows a "Copied" confirmation. */
+export function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      className="btn btn-ghost"
+      title={`Copy ${text}`}
+      onClick={async () => {
+        await navigator.clipboard.writeText(text)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }}
+    >
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  )
+}
+
 export function ErrorBanner({ message, onDismiss }: { message: string; onDismiss?: () => void }) {
   if (!message) return null
   return (
