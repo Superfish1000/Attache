@@ -107,13 +107,9 @@ function applyBody(
 }
 
 export default async function mcpToolInstanceRoutes(app: FastifyInstance) {
-  app.get('/', async (req, reply) => {
-    if (!requireAdmin(req, reply)) return reply
-    return { instances: db.mcpToolInstances }
-  })
+  app.get('/', async () => ({ instances: db.mcpToolInstances }))
 
   app.get('/:id', async (req, reply) => {
-    if (!requireAdmin(req, reply)) return reply
     const instance = db.mcpToolInstances.find((i) => i.id === (req.params as { id: string }).id)
     if (!instance) return reply.code(404).send({ error: 'instance not found' })
     return instance
@@ -182,7 +178,6 @@ export default async function mcpToolInstanceRoutes(app: FastifyInstance) {
   })
 
   app.get('/:id/container', async (req, reply) => {
-    if (!requireAdmin(req, reply)) return reply
     const instance = db.mcpToolInstances.find((i) => i.id === (req.params as { id: string }).id)
     if (!instance) return reply.code(404).send({ error: 'instance not found' })
     if (!(await dockerAvailable())) return { available: false, exists: false }

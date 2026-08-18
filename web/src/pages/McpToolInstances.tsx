@@ -29,7 +29,13 @@ export default function McpToolInstances() {
   const [busyId, setBusyId] = useState('')
 
   const reload = useCallback(() => {
-    Promise.all([api.mcpTools.list(), api.mcpToolInstances.list()])
+    // Definitions (/api/mcp-tools) are admin-only — standard users only need
+    // instance data, so skip that call for them instead of letting its 403
+    // fail the whole Promise.all and blank out the instances table below.
+    const fetchDefs: Promise<{ tools: McpToolContainerDef[] }> = admin
+      ? api.mcpTools.list()
+      : Promise.resolve({ tools: [] })
+    Promise.all([fetchDefs, api.mcpToolInstances.list()])
       .then(([t, i]) => {
         setDefs(t.tools)
         setInstances(i.instances)
@@ -43,7 +49,7 @@ export default function McpToolInstances() {
       })
       .catch((e: Error) => setErr(e.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [admin])
 
   useEffect(reload, [reload])
 
