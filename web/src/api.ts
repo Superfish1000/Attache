@@ -99,7 +99,7 @@ export const api = {
       req<{ content: string }>(`/api/agents/${id}/cron/${encodeURIComponent(file)}`),
     saveCronJob: (id: string, file: string, content: string) =>
       req<{ ok: boolean }>(`/api/agents/${id}/cron/${encodeURIComponent(file)}`, json('PUT', { content })),
-    containerAction: (id: string, action: 'start' | 'stop' | 'remove') =>
+    containerAction: (id: string, action: 'start' | 'stop' | 'restart' | 'remove') =>
       req<ContainerState>(`/api/agents/${id}/container/${action}`, { method: 'POST' }),
     regenerate: (id: string, resetFiles: boolean) =>
       req<ContainerState & { filesReset: string[] }>(

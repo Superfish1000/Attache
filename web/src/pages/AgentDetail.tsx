@@ -184,7 +184,7 @@ export default function AgentDetail() {
     }
   }
 
-  const act = async (action: 'start' | 'stop' | 'remove') => {
+  const act = async (action: 'start' | 'stop' | 'restart' | 'remove') => {
     setBusy(true)
     setErr('')
     try {
@@ -409,6 +409,9 @@ export default function AgentDetail() {
           </button>
           <button className="btn" disabled={!dockerUp || busy} onClick={() => act('stop')}>
             Stop
+          </button>
+          <button className="btn" disabled={!dockerUp || busy} onClick={() => act('restart')}>
+            Restart
           </button>
           <button
             className="btn"

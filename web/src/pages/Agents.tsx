@@ -36,7 +36,7 @@ export default function Agents() {
     return <Chip tone={c.state === 'running' ? 'ok' : 'warn'}>{c.state}</Chip>
   }
 
-  const act = async (agentId: string, action: 'start' | 'stop') => {
+  const act = async (agentId: string, action: 'start' | 'stop' | 'restart') => {
     setBusyId(agentId)
     setErr('')
     try {
@@ -119,6 +119,13 @@ export default function Agents() {
                         onClick={() => act(a.id, 'stop')}
                       >
                         Stop
+                      </button>
+                      <button
+                        className="btn"
+                        disabled={!dockerUp || busyId === a.id}
+                        onClick={() => act(a.id, 'restart')}
+                      >
+                        Restart
                       </button>
                       {admin && (
                         <button

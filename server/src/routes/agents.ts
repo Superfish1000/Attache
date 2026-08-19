@@ -23,6 +23,7 @@ import {
   writeAgentCron,
   writeAgentFileViaDocker,
   removeAgentContainer,
+  restartAgentContainer,
   startAgentContainer,
   startMcpLogin,
   stopAgentContainer,
@@ -457,8 +458,9 @@ export default async function agentRoutes(app: FastifyInstance) {
         return { available: true, ...info }
       }
       if (action === 'stop') return { available: true, ...(await stopAgentContainer(agent.id)) }
+      if (action === 'restart') return { available: true, ...(await restartAgentContainer(agent.id)) }
       if (action === 'remove') return { available: true, ...(await removeAgentContainer(agent.id)) }
-      return reply.code(400).send({ error: `unknown action '${action}' (start|stop|remove)` })
+      return reply.code(400).send({ error: `unknown action '${action}' (start|stop|restart|remove)` })
     } catch (err) {
       req.log.error(err)
       return reply.code(500).send({ error: `docker ${action} failed: ${(err as Error).message}` })

@@ -749,6 +749,12 @@ export async function stopAgentContainer(agentId: string): Promise<ContainerInfo
   return containerInfo(agentId)
 }
 
+/** In-place restart of the existing container — does not pick up config/image changes (use regenerate for that). */
+export async function restartAgentContainer(agentId: string): Promise<ContainerInfo> {
+  await getDocker().getContainer(nameFor(agentId)).restart({ t: 5 })
+  return containerInfo(agentId)
+}
+
 export async function removeAgentContainer(agentId: string): Promise<ContainerInfo> {
   try {
     await getDocker().getContainer(nameFor(agentId)).remove({ force: true })
