@@ -374,6 +374,26 @@ label {
   color: var(--muted);
 }
 
+/* needs-regenerate "light" — flags whether a running container predates the current locally-built image */
+.regen-light {
+  font-size: 28px;
+  line-height: 1;
+  vertical-align: middle;
+  cursor: default;
+}
+
+.regen-light-stale {
+  color: var(--yellow);
+}
+
+.regen-light-ok {
+  color: var(--green);
+}
+
+.regen-light-unknown {
+  color: var(--muted);
+}
+
 /* split button: primary action + dropdown for alternate actions (Stage / Update / Update+regenerate) */
 .split-btn {
   position: relative;

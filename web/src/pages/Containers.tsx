@@ -49,6 +49,8 @@ export default function Containers() {
   const [checkingAll, setCheckingAll] = useState(false)
   const [upgradeBusyId, setUpgradeBusyId] = useState('')
   const [bulkUpgrading, setBulkUpgrading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'up-to-date' | 'behind' | 'not-checked'>('all')
 
   const select = useCallback((def: ContainerDef) => {
     setSelId(def.id)
@@ -128,6 +130,27 @@ export default function Containers() {
   }
 
   const usedBy = (id: string) => agents.filter((a) => a.containerId === id).length
+
+  const statusBucket = (id: string): 'up-to-date' | 'behind' | 'not-checked' => {
+    const status = updateChecks[id]?.status
+    if (status === 'up-to-date') return 'up-to-date'
+    if (status === 'behind') return 'behind'
+    return 'not-checked'
+  }
+
+  const filtersActive = search.trim() !== '' || statusFilter !== 'all'
+  const clearFilters = () => {
+    setSearch('')
+    setStatusFilter('all')
+  }
+
+  const visibleDefs = [...defs]
+    .sort((a, b) => (a.id === defaultId ? -1 : b.id === defaultId ? 1 : 0))
+    .filter((d) => {
+      const q = search.trim().toLowerCase()
+      return !q || d.name.toLowerCase().includes(q) || d.image.toLowerCase().includes(q)
+    })
+    .filter((d) => statusFilter === 'all' || statusBucket(d.id) === statusFilter)
 
   const checkOne = async (id: string) => {
     try {
@@ -321,6 +344,24 @@ export default function Containers() {
         Reusable container setups — image, runtime defaults, and the behavior files agents expose
       </p>
       <div className="panel">
+        <div className="btn-row" style={{ marginBottom: 12 }}>
+          <input
+            placeholder="Search name or image…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}>
+            <option value="all">All</option>
+            <option value="up-to-date">Up to date</option>
+            <option value="behind">Update available</option>
+            <option value="not-checked">Not checked</option>
+          </select>
+          {filtersActive && (
+            <button className="btn" onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
+        </div>
         <table>
           <thead>
             <tr>
@@ -333,7 +374,7 @@ export default function Containers() {
             </tr>
           </thead>
           <tbody>
-            {[...defs].sort((a, b) => (a.id === defaultId ? -1 : b.id === defaultId ? 1 : 0)).map((d) => (
+            {visibleDefs.map((d) => (
               <tr key={d.id}>
                 <td>
                   <a

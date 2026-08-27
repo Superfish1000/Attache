@@ -385,6 +385,29 @@ export function UpdateLight({ check }: { check: ImageUpdateCheck | null | undefi
   )
 }
 
+/** Small status dot flagging whether a running container predates the current locally-built image — distinct from UpdateLight, which flags the registry vs. the local build. */
+export function NeedsRegenLight({ stale }: { stale: boolean | null | undefined }) {
+  if (stale === true) {
+    return (
+      <span className="regen-light regen-light-stale" title="needs regenerate — a newer local build exists">
+        ●
+      </span>
+    )
+  }
+  if (stale === false) {
+    return (
+      <span className="regen-light regen-light-ok" title="container matches the current local image">
+        ●
+      </span>
+    )
+  }
+  return (
+    <span className="regen-light regen-light-unknown" title="unknown">
+      ●
+    </span>
+  )
+}
+
 /**
  * Primary click = "Update" (pull the latest base + rebuild); the dropdown
  * offers "Stage" (pull only, no rebuild, no container impact) and "Update +

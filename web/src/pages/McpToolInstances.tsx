@@ -1,7 +1,15 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { useAuth } from '../auth'
-import { Chip, CopyButton, ErrorBanner, normalizeImageRef, parseLimitField } from '../components'
+import {
+  Chip,
+  CopyButton,
+  ErrorBanner,
+  NeedsRegenLight,
+  normalizeImageRef,
+  parseLimitField,
+  UpdateLight,
+} from '../components'
 import type { ContainerState, McpToolContainerDef, McpToolInstance } from '../types'
 
 export default function McpToolInstances() {
@@ -28,6 +36,9 @@ export default function McpToolInstances() {
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busyId, setBusyId] = useState('')
+  const [search, setSearch] = useState('')
+  const [filterDefId, setFilterDefId] = useState('')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'running' | 'stopped' | 'none'>('all')
 
   const reload = useCallback(() => {
     // Definitions (/api/mcp-tools) are admin-only — standard users only need
@@ -189,6 +200,40 @@ export default function McpToolInstances() {
     return <Chip tone={c.running ? 'ok' : 'off'}>{c.state ?? (c.running ? 'running' : 'stopped')}</Chip>
   }
 
+  // Bucket for the Status filter dropdown — collapses "docker offline"/"not loaded yet" into
+  // "no container" since none of those states are a running or stopped container either.
+  const statusBucket = (id: string): 'running' | 'stopped' | 'none' => {
+    const c = containers[id]
+    if (!c || !c.available || !c.exists) return 'none'
+    return c.running ? 'running' : 'stopped'
+  }
+
+  const defById = new Map(defs.map((d) => [d.id, d]))
+
+  const matchesSearch = (inst: McpToolInstance) => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return (
+      inst.name.toLowerCase().includes(q) ||
+      (inst.defName ?? '').toLowerCase().includes(q) ||
+      inst.networkAlias.toLowerCase().includes(q)
+    )
+  }
+
+  const filteredInstances = instances.filter(
+    (inst) =>
+      matchesSearch(inst) &&
+      (!admin || !filterDefId || inst.defId === filterDefId) &&
+      (filterStatus === 'all' || statusBucket(inst.id) === filterStatus),
+  )
+
+  const hasActiveFilters = search !== '' || filterDefId !== '' || filterStatus !== 'all'
+  const clearFilters = () => {
+    setSearch('')
+    setFilterDefId('')
+    setFilterStatus('all')
+  }
+
   const reachableAt = (inst: McpToolInstance) =>
     inst.networkAlias && inst.config.containerPorts.length > 0
       ? inst.config.containerPorts.map((p) => `http://${inst.networkAlias}:${p}`)
@@ -220,19 +265,66 @@ export default function McpToolInstances() {
             No MCP tool instances yet.{admin && ' Create one below.'}
           </div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Definition</th>
-                <th>Network alias</th>
-                <th>Reachable at</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {instances.map((inst) => (
+          <>
+            <div className="form-row" style={{ marginBottom: 14 }}>
+              <div className="field" style={{ flex: 1, minWidth: 200 }}>
+                <label>Search</label>
+                <input
+                  placeholder="Name, definition, or network alias…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  style={{ width: '100%' }}
+                />
+              </div>
+              {admin && (
+                <div className="field">
+                  <label>Definition</label>
+                  <select value={filterDefId} onChange={(e) => setFilterDefId(e.target.value)}>
+                    <option value="">All</option>
+                    {defs.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="field">
+                <label>Status</label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
+                >
+                  <option value="all">All</option>
+                  <option value="running">Running</option>
+                  <option value="stopped">Stopped</option>
+                  <option value="none">No container</option>
+                </select>
+              </div>
+              {hasActiveFilters && (
+                <div className="field">
+                  <button className="btn" onClick={clearFilters}>
+                    Clear filters
+                  </button>
+                </div>
+              )}
+            </div>
+            {filteredInstances.length === 0 ? (
+              <div className="empty">No MCP tool instances match the current filters.</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Definition</th>
+                    <th>Network alias</th>
+                    <th>Reachable at</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredInstances.map((inst) => (
                 <Fragment key={inst.id}>
                   <tr>
                     <td>{inst.name}</td>
@@ -252,7 +344,13 @@ export default function McpToolInstances() {
                         </div>
                       ))}
                     </td>
-                    <td>{statusChip(inst.id)}</td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {statusChip(inst.id)}
+                        <UpdateLight check={defById.get(inst.defId)?.lastUpdateCheck} />
+                        <NeedsRegenLight stale={containers[inst.id]?.stale} />
+                      </div>
+                    </td>
                     <td>
                       <div className="btn-row">
                         {admin && (
@@ -398,8 +496,10 @@ export default function McpToolInstances() {
                   )}
                 </Fragment>
               ))}
-            </tbody>
-          </table>
+                </tbody>
+              </table>
+            )}
+          </>
         )}
         {admin && (
           <div className="btn-row" style={{ marginTop: 12 }}>

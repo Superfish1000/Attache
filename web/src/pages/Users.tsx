@@ -17,6 +17,10 @@ export default function Users() {
   const [password, setPassword] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [search, setSearch] = useState('')
+  const [roleFilter, setRoleFilter] = useState<'all' | Role>('all')
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'manual' | 'o365'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled' | 'no password'>('all')
   const navigate = useNavigate()
 
   const reload = useCallback(() => {
@@ -114,6 +118,28 @@ export default function Users() {
     }
   }
 
+  const hasActiveFilters =
+    search.trim() !== '' || roleFilter !== 'all' || sourceFilter !== 'all' || statusFilter !== 'all'
+
+  const clearFilters = () => {
+    setSearch('')
+    setRoleFilter('all')
+    setSourceFilter('all')
+    setStatusFilter('all')
+  }
+
+  const filteredUsers = users.filter((u) => {
+    if (roleFilter !== 'all' && u.role !== roleFilter) return false
+    if (sourceFilter !== 'all' && u.source !== sourceFilter) return false
+    const status = u.disabled ? 'disabled' : u.hasPassword ? 'enabled' : 'no password'
+    if (statusFilter !== 'all' && status !== statusFilter) return false
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      if (!u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q)) return false
+    }
+    return true
+  })
+
   const removeUser = async (user: User) => {
     const owned = agents.filter((a) => a.userId === user.id).length
     if (!confirm(`Delete ${user.name}? This also deletes their ${owned} agent(s).`)) return
@@ -188,8 +214,58 @@ export default function Users() {
             </div>
           </div>
         )}
+        <div className="form-row" style={{ marginBottom: 14 }}>
+          <div className="field">
+            <label>Search</label>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Name or email"
+            />
+          </div>
+          <div className="field">
+            <label>Role</label>
+            <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as 'all' | Role)}>
+              <option value="all">All</option>
+              <option value="admin">admin</option>
+              <option value="standard">standard</option>
+            </select>
+          </div>
+          <div className="field">
+            <label>Source</label>
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value as 'all' | 'manual' | 'o365')}
+            >
+              <option value="all">All</option>
+              <option value="manual">manual</option>
+              <option value="o365">o365</option>
+            </select>
+          </div>
+          <div className="field">
+            <label>Status</label>
+            <select
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(e.target.value as 'all' | 'enabled' | 'disabled' | 'no password')
+              }
+            >
+              <option value="all">All</option>
+              <option value="enabled">Enabled</option>
+              <option value="disabled">Disabled</option>
+              <option value="no password">No password</option>
+            </select>
+          </div>
+          {hasActiveFilters && (
+            <button className="btn" onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
+        </div>
         {users.length === 0 ? (
           <div className="empty">No users yet. Add one above or sync from O365.</div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="empty">No users match the current filters.</div>
         ) : (
           <table>
             <thead>
@@ -204,7 +280,7 @@ export default function Users() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
+              {filteredUsers.map((u) => (
                 <tr key={u.id}>
                   <td>
                     {u.name}
