@@ -312,17 +312,30 @@ export interface ContainerInfo {
   state?: string
   containerId?: string
   image?: string
+  /** Whether this container's creation-time image content predates the currently-locally-tagged image for the same reference — i.e. it needs a regenerate to pick up a rebuild. null = couldn't determine (container or image missing). */
+  stale?: boolean | null
+}
+
+/** Current image ID for a tag/reference, or null if it isn't present locally (never pulled/built, or a bad ref). */
+async function imageIdFor(imageRef: string): Promise<string | null> {
+  try {
+    return (await getDocker().getImage(imageRef).inspect()).Id
+  } catch {
+    return null
+  }
 }
 
 export async function containerInfo(agentId: string): Promise<ContainerInfo> {
   try {
     const insp = await getDocker().getContainer(nameFor(agentId)).inspect()
+    const currentId = await imageIdFor(insp.Config.Image)
     return {
       exists: true,
       running: insp.State.Running,
       state: insp.State.Status,
       containerId: insp.Id.slice(0, 12),
       image: insp.Config.Image,
+      stale: currentId === null ? null : insp.Image !== currentId,
     }
   } catch (err) {
     if ((err as { statusCode?: number }).statusCode === 404) return { exists: false }
@@ -767,10 +780,13 @@ export async function removeAgentContainer(agentId: string): Promise<ContainerIn
 export interface ManagedContainer {
   containerId: string
   agentId: string | undefined
+  instanceId: string | undefined
   image: string
   state: string
   status: string
   names: string[]
+  /** Whether this container's creation-time image content predates the currently-locally-tagged image for the same reference — needs a regenerate to pick up a rebuild. null = couldn't determine. */
+  stale: boolean | null
 }
 
 export async function listManagedContainers(): Promise<ManagedContainer[]> {
@@ -778,14 +794,40 @@ export async function listManagedContainers(): Promise<ManagedContainer[]> {
     all: true,
     filters: { label: ['attache.managed=true'] },
   })
-  return list.map((c) => ({
-    containerId: c.Id.slice(0, 12),
-    agentId: c.Labels['attache.agent.id'],
-    image: c.Image,
-    state: c.State,
-    status: c.Status,
-    names: c.Names,
-  }))
+  // The bulk listing's own .Image field degrades to a bare image ID once the
+  // original tag has since been re-pulled/rebuilt to point elsewhere — Docker
+  // can no longer resolve a friendly name for it (confirmed live: docker ps
+  // reported a raw id while docker inspect's Config.Image still correctly
+  // showed the tag). Comparing THAT drifted field against its own current id
+  // is a tautology — always "not stale". Use each container's authoritative
+  // expected image instead: the owning agent's/instance's own config.image,
+  // which is DB-stored and never drifts.
+  type RawContainer = (typeof list)[number]
+  const expectedImageFor = (c: RawContainer): string | null => {
+    const agentId = c.Labels['attache.agent.id']
+    if (agentId) return db.agents.find((a) => a.id === agentId)?.config.image ?? null
+    const instanceId = c.Labels['attache.mcp-tool.id']
+    if (instanceId) return db.mcpToolInstances.find((i) => i.id === instanceId)?.config.image ?? null
+    return null
+  }
+  const expectedImages = list.map(expectedImageFor)
+  const uniqueExpected = [...new Set(expectedImages.filter((x): x is string => Boolean(x)))]
+  const currentIds = await Promise.all(uniqueExpected.map((img) => imageIdFor(img)))
+  const currentIdByImage = new Map(uniqueExpected.map((img, i) => [img, currentIds[i]]))
+  return list.map((c, i) => {
+    const expected = expectedImages[i]
+    const currentId = expected ? (currentIdByImage.get(expected) ?? null) : null
+    return {
+      containerId: c.Id.slice(0, 12),
+      agentId: c.Labels['attache.agent.id'],
+      instanceId: c.Labels['attache.mcp-tool.id'],
+      image: c.Image,
+      state: c.State,
+      status: c.Status,
+      names: c.Names,
+      stale: currentId === null ? null : c.ImageID !== currentId,
+    }
+  })
 }
 
 const toolNameFor = (id: string) => `attache-tool-${id}`
@@ -793,12 +835,14 @@ const toolNameFor = (id: string) => `attache-tool-${id}`
 export async function toolContainerInfo(id: string): Promise<ContainerInfo> {
   try {
     const insp = await getDocker().getContainer(toolNameFor(id)).inspect()
+    const currentId = await imageIdFor(insp.Config.Image)
     return {
       exists: true,
       running: insp.State.Running,
       state: insp.State.Status,
       containerId: insp.Id.slice(0, 12),
       image: insp.Config.Image,
+      stale: currentId === null ? null : insp.Image !== currentId,
     }
   } catch (err) {
     if ((err as { statusCode?: number }).statusCode === 404) return { exists: false }

@@ -169,15 +169,19 @@ export interface ContainerState {
   state?: string
   containerId?: string
   image?: string
+  /** Creation-time image content predates the currently-locally-tagged image — needs a regenerate. null = couldn't determine. */
+  stale?: boolean | null
 }
 
 export interface ManagedContainer {
   containerId: string
   agentId?: string
+  instanceId?: string
   image: string
   state: string
   status: string
   names: string[]
+  stale: boolean | null
 }
 
 export interface ContainersResponse {
