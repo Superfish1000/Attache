@@ -354,8 +354,8 @@ export default function Containers() {
                   <UpdateLight check={updateChecks[d.id]} />
                 </td>
                 <td>
-                  <button className="btn" onClick={() => select(d)}>
-                    Edit
+                  <button className="btn" onClick={() => (selId === d.id ? setSelId('') : select(d))}>
+                    {selId === d.id ? 'Close' : 'Edit'}
                   </button>
                 </td>
               </tr>
