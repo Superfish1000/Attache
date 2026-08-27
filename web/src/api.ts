@@ -9,6 +9,7 @@ import type {
   ImageUpdateCheck,
   ImageUpdateResult,
   McpInfo,
+  McpOAuthClient,
   McpProvisionResult,
   McpStatus,
   McpToolContainerDef,
@@ -190,8 +191,14 @@ export const api = {
       email?: Partial<{ host: string; port: number; secure: boolean; user: string; pass: string; from: string }>
       selfUpdate?: Partial<SettingsView['selfUpdate']>
       imageUpdates?: Partial<SettingsView['imageUpdates']>
+      mcpServer?: Partial<{ enabled: boolean }>
     }) => req<SettingsView>('/api/settings', json('PUT', s)),
     emailTest: () => req<{ ok: boolean; to: string }>('/api/settings/email/test', { method: 'POST' }),
+    regenerateMcpToken: () =>
+      req<{ bearerToken: string }>('/api/settings/mcp-server/regenerate-token', { method: 'POST' }),
+    mcpOAuthClients: () => req<{ clients: McpOAuthClient[] }>('/api/settings/mcp-oauth-clients'),
+    revokeMcpOAuthClient: (id: string) =>
+      req<void>(`/api/settings/mcp-oauth-clients/${id}`, { method: 'DELETE' }),
   },
   mcp: {
     status: () => req<McpStatus>('/api/mcp/status'),

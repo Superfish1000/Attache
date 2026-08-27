@@ -1,11 +1,12 @@
 import type { FastifyInstance } from 'fastify'
+import { randomBytes } from 'node:crypto'
 import { DATA_DIR, db, save } from '../store.js'
 import { requireAdmin } from '../auth.js'
 import { sendMail, verifySmtp } from '../mailer.js'
 import { ATTACHE_NETWORK, attacheNetworkExists } from '../docker.js'
 
 async function view() {
-  const { server, docker, security, email, selfUpdate, imageUpdates } = db.settings
+  const { server, docker, security, email, selfUpdate, imageUpdates, mcpServer } = db.settings
   return {
     server,
     docker,
@@ -20,6 +21,7 @@ async function view() {
     },
     selfUpdate,
     imageUpdates,
+    mcpServer,
     dataDir: DATA_DIR,
     // shared bridge network agent/tool containers use to reach each other by
     // alias — created on demand at first container start, not user-configurable
@@ -49,6 +51,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
       email: Partial<{ host: string; port: number; secure: boolean; user: string; pass: string; from: string }>
       selfUpdate: Partial<{ autoCheckHours: number; autoApply: boolean }>
       imageUpdates: Partial<{ autoCheckHours: number; autoMode: string }>
+      mcpServer: Partial<{ enabled: boolean }>
     }>
     const s = db.settings
 
@@ -148,9 +151,19 @@ export default async function settingsRoutes(app: FastifyInstance) {
         s.imageUpdates.autoMode = mode as typeof s.imageUpdates.autoMode
       }
     }
+    if (body.mcpServer?.enabled !== undefined) {
+      s.mcpServer.enabled = Boolean(body.mcpServer.enabled)
+    }
 
     save()
     return view()
+  })
+
+  /** Bearer token itself is never settable via the generic PUT above — only via this dedicated action, so it can't be accidentally overwritten with an empty string. */
+  app.post('/mcp-server/regenerate-token', async () => {
+    db.settings.mcpServer.bearerToken = randomBytes(24).toString('hex')
+    save()
+    return { bearerToken: db.settings.mcpServer.bearerToken }
   })
 
   /** Sends a test email to the signed-in admin — the operational smoke test. */

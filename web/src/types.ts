@@ -245,9 +245,20 @@ export interface SettingsView {
   selfUpdate: { autoCheckHours: number; autoApply: boolean }
   /** Scheduled check/upgrade for agent + MCP tool container image definitions. autoCheckHours = 0 disables it. */
   imageUpdates: { autoCheckHours: number; autoMode: 'check' | 'stage' | 'update' | 'update-regen' }
+  mcpServer: { enabled: boolean; bearerToken: string }
   dataDir: string
   /** Shared bridge network agent/tool containers use to reach each other by alias — created on demand, not user-configurable. */
   network: { name: string; exists: boolean }
+}
+
+export interface McpOAuthClient {
+  id: string
+  clientId: string
+  name: string
+  redirectUris: string[]
+  applicationType: 'web' | 'native'
+  createdAt: string
+  lastUsedAt?: string
 }
 
 export interface UpdateCheck {

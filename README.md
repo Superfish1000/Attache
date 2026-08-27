@@ -14,6 +14,7 @@ A self-hosted web GUI for running **containerized AI agents** — one container 
 - **Password reset** — self-serve **Forgot password?** on the login screen, plus an admin **Email link** re-send on the Users page. Links are single-use and expire.
 - **Restart button** — restart the server from Settings → Updates after an update, no shell needed.
 - **MCP tool library** — stub today (`/api/mcp/status`); planned shared tool server for all agents. Its page is hidden from the nav until it's more than a stub.
+- **MCP management server** — Attaché itself exposes its own management surface (agents, agent/MCP tool container definitions, MCP tool instances — full lifecycle) as MCP tools, so an agent can create/update/regenerate/delete containers through Attaché's own correct lifecycle instead of hand-editing containers on the host. Off by default; OAuth 2.1 + a static Bearer token for auth.
 
 ## Stack
 
@@ -132,6 +133,22 @@ MCP tool containers (standalone containers that just run MCP server software, de
 
 **Optional host publishing.** An **Also publish to a host port** checkbox (off by default) additionally maps an instance's ports to auto-assigned host ports, for direct/admin testing (e.g. `curl` from the host). Agents never need this — they reach the instance over `attache-net`.
 
+### MCP management server
+
+Attaché can expose its own management capabilities — agents, agent container definitions, MCP tool container definitions, MCP tool instances, and their full lifecycle (create/update/delete/build/check-for-update/upgrade/start/stop/restart/regenerate) — as MCP tools an agent can call. It's the fix for the "I updated my custom MCP tool container and now the agent connected to it needs a manual regenerate + disable/restart-gateway/re-enable dance" problem: give the agent a tool that goes through Attaché's own correct container lifecycle instead of hand-editing containers on the host, and the DNS-alias/network bookkeeping never gets corrupted in the first place.
+
+**Enabling it.** Off by default — **Settings → MCP management server** → **Enabled**. When off, `/mcp`, `/authorize`, `/token`, `/register`, and the well-known metadata endpoints all return 503.
+
+**Access model.** No per-agent/per-owner scoping — any caller holding a valid credential gets the same access an admin has in the GUI: every agent, every definition, every instance, regardless of owner. This mirrors how every other MCP server integration already works in Attaché (wired into an agent via the existing MCP-servers mechanism) — there's no new permission layer.
+
+**Connecting an agent (internal, Bearer token).** Add an entry to a container definition's **MCP servers** list (Containers page) the same way you'd add any other MCP server: URL `http://host.docker.internal:<api-port>/mcp` (agent containers get `host.docker.internal` mapped to the Docker host automatically), and the Bearer token from **Settings → MCP management server** (reveal/regenerate there). No browser, no human-in-the-loop — same as any other pre-provisioned MCP server.
+
+**Connecting an external client (OAuth).** Point a remote MCP client (Claude Desktop, Claude.ai's remote-MCP connector, etc.) at `<Public GUI address>/mcp` (Settings → Server → **Public GUI address** must be set — OAuth needs a stable public address to scope tokens to). The client registers via Dynamic Client Registration (`POST /register`) or a Client ID Metadata Document (a `client_id` that's itself an HTTPS URL Attaché fetches), then walks the standard OAuth 2.1 + PKCE authorization-code flow. The first connection shows an admin a consent prompt ("*`<client>`* wants to connect to Attaché's MCP server — Approve/Deny") — only an admin can approve, since approving grants full admin-equivalent access. Approved clients show up under **Settings → MCP management server → Connected OAuth clients**, with a **Revoke** action.
+
+**Connecting locally (stdio).** `npm run mcp-stdio` (from `server/`) runs the same tools over stdio, in-process, no network/auth layer — for local-machine MCP clients that prefer a subprocess over HTTP.
+
+**Destructive-action safety.** Every tool that deletes, stops, or recreates something already running (`delete_*`, `stop_*`, `regenerate_*`, and `upgrade_*`/`upgrade_all_*` calls with `mode: 'update-regen'`) requires `confirm: true` in its input. This is a cheap safety net against a hallucinated or misfired call, not a hard security boundary — a determined/compromised client can always pass `confirm: true`, which is an acceptable tradeoff given the access model is already full-admin trust for any holder of a valid credential.
+
 ### Agents
 
 Each agent owns a data dir (`data/agents/<id>/`) mounted into its container — souls and memories edited in the GUI are the same files the agent reads and writes. The agent page has:
@@ -224,6 +241,7 @@ Sync semantics are **disable, don't delete**: members who leave the group are di
 - **Email (SMTP)** — host, port, TLS mode (STARTTLS/none vs implicit TLS), optional username/password (blank username = no auth), and From address; leave host empty to disable email entirely. A **Send test email** button mails the signed-in admin to prove the config. This powers all set-password links: new-user onboarding, **Forgot password?**, and the Users page's **Email link** button. Emailed links **require** the Public GUI address (Settings → Server) to be set — without it Attaché can't know what URL to put in the mail.
 - **Docker** — universal daemon config: socket/pipe path, auto-pull, host-port range start, restart policy, security options, and the shared **default env** merged into every container (settings → definition → agent, later wins).
 - **Security** — session lifetime. Passwords are scrypt hashes; sessions persist across server restarts.
+- **MCP management server** — enable/disable, the Bearer token agents use to connect (reveal/regenerate), and connected OAuth clients (revoke). See *MCP management server* above.
 
 ## Account recovery / CLI account creation
 

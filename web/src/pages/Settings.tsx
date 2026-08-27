@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { Chip, EnvVarsHelp, ErrorBanner, InfoPopup, fmtDate } from '../components'
-import type { SettingsView, UpdateCheck, UpdateResult } from '../types'
+import type { McpOAuthClient, SettingsView, UpdateCheck, UpdateResult } from '../types'
 
 export default function Settings() {
   const [dataDir, setDataDir] = useState('')
@@ -27,6 +27,10 @@ export default function Settings() {
   const [selfAutoApply, setSelfAutoApply] = useState(false)
   const [imgAutoHours, setImgAutoHours] = useState('0')
   const [imgAutoMode, setImgAutoMode] = useState<SettingsView['imageUpdates']['autoMode']>('check')
+  const [mcpEnabled, setMcpEnabled] = useState(false)
+  const [mcpToken, setMcpToken] = useState('')
+  const [mcpTokenVisible, setMcpTokenVisible] = useState(false)
+  const [mcpClients, setMcpClients] = useState<McpOAuthClient[]>([])
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -141,6 +145,8 @@ export default function Settings() {
     setSelfAutoApply(s.selfUpdate.autoApply)
     setImgAutoHours(String(s.imageUpdates.autoCheckHours))
     setImgAutoMode(s.imageUpdates.autoMode)
+    setMcpEnabled(s.mcpServer.enabled)
+    setMcpToken(s.mcpServer.bearerToken)
   }
 
   useEffect(() => {
@@ -149,6 +155,34 @@ export default function Settings() {
       .then(apply)
       .catch((e: Error) => setErr(e.message))
   }, [])
+
+  useEffect(() => {
+    api.settings
+      .mcpOAuthClients()
+      .then((r) => setMcpClients(r.clients))
+      .catch(() => undefined)
+  }, [])
+
+  const regenerateMcpToken = async () => {
+    if (!confirm('Regenerate the MCP Bearer token? Anything using the old one stops working immediately.')) return
+    try {
+      const { bearerToken } = await api.settings.regenerateMcpToken()
+      setMcpToken(bearerToken)
+      setNote('MCP Bearer token regenerated.')
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
+  const revokeMcpClient = async (id: string) => {
+    if (!confirm('Revoke this client? It will need to reconnect and be re-approved.')) return
+    try {
+      await api.settings.revokeMcpOAuthClient(id)
+      setMcpClients((cs) => cs.filter((c) => c.id !== id))
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
 
   const saveAll = async () => {
     setBusy(true)
@@ -184,6 +218,7 @@ export default function Settings() {
         security: { sessionTtlHours: Number(sessionTtl) },
         selfUpdate: { autoCheckHours: Number(selfAutoHours) || 0, autoApply: selfAutoApply },
         imageUpdates: { autoCheckHours: Number(imgAutoHours) || 0, autoMode: imgAutoMode },
+        mcpServer: { enabled: mcpEnabled },
       })
       apply(saved)
       setEmPass('')
@@ -311,6 +346,61 @@ export default function Settings() {
             </select>
           </div>
         </div>
+      </div>
+
+      <h2>MCP management server</h2>
+      <div className="panel">
+        <p className="muted" style={{ marginTop: 0 }}>
+          Lets an AI agent connect to Attaché itself and manage agent/MCP tool containers — create,
+          update, regenerate, delete. Off by default. Agents connect with the Bearer token below
+          (wired in like any other MCP server); external clients (Claude Desktop, etc.) connect via
+          OAuth and need an admin to approve them here the first time.
+        </p>
+        <label className="check-row">
+          <input type="checkbox" checked={mcpEnabled} onChange={(e) => setMcpEnabled(e.target.checked)} />
+          <span>Enabled</span>
+        </label>
+        <div className="field" style={{ marginTop: 14 }}>
+          <label>Bearer token</label>
+          <div className="btn-row">
+            <input readOnly type={mcpTokenVisible ? 'text' : 'password'} value={mcpToken} style={{ flex: 1 }} />
+            <button className="btn" onClick={() => setMcpTokenVisible((v) => !v)}>
+              {mcpTokenVisible ? 'Hide' : 'Reveal'}
+            </button>
+            <button className="btn" onClick={regenerateMcpToken}>
+              Regenerate
+            </button>
+          </div>
+        </div>
+        {mcpClients.length > 0 && (
+          <>
+            <h2 style={{ marginTop: 18 }}>Connected OAuth clients</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Connected</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {mcpClients.map((c) => (
+                  <tr key={c.id}>
+                    <td>{c.name}</td>
+                    <td className="muted">{c.applicationType}</td>
+                    <td className="muted">{fmtDate(c.createdAt)}</td>
+                    <td>
+                      <button className="btn btn-danger" onClick={() => revokeMcpClient(c.id)}>
+                        Revoke
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
       </div>
 
       <h2>Server</h2>
