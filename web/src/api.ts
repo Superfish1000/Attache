@@ -188,6 +188,8 @@ export const api = {
       docker?: Partial<SettingsView['docker']>
       security?: Partial<SettingsView['security']>
       email?: Partial<{ host: string; port: number; secure: boolean; user: string; pass: string; from: string }>
+      selfUpdate?: Partial<SettingsView['selfUpdate']>
+      imageUpdates?: Partial<SettingsView['imageUpdates']>
     }) => req<SettingsView>('/api/settings', json('PUT', s)),
     emailTest: () => req<{ ok: boolean; to: string }>('/api/settings/email/test', { method: 'POST' }),
   },

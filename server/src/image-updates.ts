@@ -1,13 +1,5 @@
 import { runDocker } from './docker-build.js'
-
-export interface ImageUpdateCheck {
-  status: 'up-to-date' | 'behind' | 'unknown'
-  /** The image reference actually checked (a Dockerfile's FROM image, or the definition's own image). */
-  checkedImage: string
-  localDigest?: string
-  remoteDigest?: string
-  error?: string
-}
+import type { ImageUpdateCheck } from './types.js'
 
 /** First `FROM <image>` line of a Dockerfile, or null if there isn't one. */
 export function firstFromImage(dockerfile: string): string | null {

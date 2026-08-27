@@ -10,14 +10,25 @@ import {
   removeAgentContainer,
   startAgentContainer,
 } from '../docker.js'
-import type { ContainerDef, ContainerFileDef } from '../types.js'
+import type { ContainerDef, ContainerFileDef, ImageUpdateCheck } from '../types.js'
 
 type UpdateMode = 'stage' | 'update' | 'update-regen'
 
 /** The image this definition's "check for updates" / "upgrade" acts on: the Dockerfile's FROM image, or the definition's own image if there's no Dockerfile. */
-function checkedImageFor(def: ContainerDef): string | null {
+export function checkedImageFor(def: ContainerDef): string | null {
   if (def.dockerfile.trim()) return firstFromImage(def.dockerfile)
   return def.image.trim() || null
+}
+
+/** Runs a check, persists it onto the definition (so the UI's light survives a reload / reflects scheduled checks), and returns it. Exported for the scheduler's sweep. */
+export async function checkAndPersist(def: ContainerDef): Promise<ImageUpdateCheck> {
+  const image = checkedImageFor(def)
+  const check: ImageUpdateCheck = image
+    ? await checkImageUpdate(image)
+    : { status: 'unknown', checkedImage: '', error: 'no image to check' }
+  def.lastUpdateCheck = { ...check, checkedAt: new Date().toISOString() }
+  save()
+  return check
 }
 
 /**
@@ -26,7 +37,7 @@ function checkedImageFor(def: ContainerDef): string | null {
  * update-regen additionally remove+recreate+starts every agent on this
  * definition, same steps as the existing per-agent regenerate route.
  */
-async function applyImageUpdate(def: ContainerDef, image: string, mode: UpdateMode) {
+export async function applyImageUpdate(def: ContainerDef, image: string, mode: UpdateMode) {
   const pull = await pullImage(image)
   if (mode === 'stage') return { ok: pull.ok, mode, pull: pull.output, regenerated: [] as Regenerated[] }
 
@@ -55,6 +66,35 @@ interface Regenerated {
   agentId: string
   ok: boolean
   error?: string
+}
+
+/**
+ * Checks every agent container definition, then applies `mode` only to the
+ * ones found behind — the shared core of the bulk "/update-all" route and
+ * the scheduler's periodic sweep (scheduler.ts). save() happens per-check
+ * (checkAndPersist) and per-apply is left to the caller.
+ */
+export async function sweepAndApply(mode: UpdateMode) {
+  const results: Array<{ defId: string; name: string; skipped?: string; result?: unknown; error?: string }> = []
+  for (const def of db.containers) {
+    const image = checkedImageFor(def)
+    if (!image) {
+      results.push({ defId: def.id, name: def.name, skipped: 'no image to check' })
+      continue
+    }
+    const check = await checkAndPersist(def)
+    if (check.status !== 'behind') {
+      results.push({ defId: def.id, name: def.name, skipped: check.status })
+      continue
+    }
+    try {
+      results.push({ defId: def.id, name: def.name, result: await applyImageUpdate(def, image, mode) })
+    } catch (err) {
+      results.push({ defId: def.id, name: def.name, error: (err as Error).message })
+    }
+  }
+  save()
+  return results
 }
 
 const KEY_RE = /^[a-z0-9][a-z0-9-]*$/
@@ -253,13 +293,11 @@ export default async function containerDefRoutes(app: FastifyInstance) {
     )
   })
 
-  /** On-demand only — checks the registry's current digest against what's cached locally. Never called automatically (registries rate-limit anonymous checks). */
+  /** On-demand by default (via this route) — checks the registry's current digest against what's cached locally, persisting the result. Also driven on a schedule if settings.imageUpdates.autoCheckHours is set. */
   app.get('/:id/update-check', async (req, reply) => {
     const def = db.containers.find((c) => c.id === (req.params as { id: string }).id)
     if (!def) return reply.code(404).send({ error: 'container definition not found' })
-    const image = checkedImageFor(def)
-    if (!image) return { status: 'unknown' as const, checkedImage: '', error: 'no image to check' }
-    return checkImageUpdate(image)
+    return checkAndPersist(def)
   })
 
   app.post('/:id/update', async (req, reply) => {
@@ -289,26 +327,7 @@ export default async function containerDefRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: "mode must be 'stage', 'update', or 'update-regen'" })
     }
     if (!(await dockerAvailable())) return reply.code(503).send({ error: 'Docker daemon is not available' })
-    const results = []
-    for (const def of db.containers) {
-      const image = checkedImageFor(def)
-      if (!image) {
-        results.push({ defId: def.id, name: def.name, skipped: 'no image to check' })
-        continue
-      }
-      const check = await checkImageUpdate(image)
-      if (check.status !== 'behind') {
-        results.push({ defId: def.id, name: def.name, skipped: check.status })
-        continue
-      }
-      try {
-        results.push({ defId: def.id, name: def.name, result: await applyImageUpdate(def, image, mode as UpdateMode) })
-      } catch (err) {
-        results.push({ defId: def.id, name: def.name, error: (err as Error).message })
-      }
-    }
-    save()
-    return { results }
+    return { results: await sweepAndApply(mode as UpdateMode) }
   })
 
   app.put('/:id/default', async (req, reply) => {

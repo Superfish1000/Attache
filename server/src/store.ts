@@ -102,6 +102,8 @@ const defaults = (): DB => ({
     },
     security: { sessionTtlHours: 72 },
     email: { host: '', port: 587, secure: false, user: '', pass: '', from: '' },
+    selfUpdate: { autoCheckHours: 0, autoApply: false },
+    imageUpdates: { autoCheckHours: 0, autoMode: 'check' },
     lastO365Sync: null,
   },
 })
@@ -279,6 +281,8 @@ function load(): { db: DB; migrated: boolean } {
       },
       security: { ...d.settings.security, ...(raw.settings?.security ?? {}) },
       email: { ...d.settings.email, ...(raw.settings?.email ?? {}) },
+      selfUpdate: { ...d.settings.selfUpdate, ...(raw.settings?.selfUpdate ?? {}) },
+      imageUpdates: { ...d.settings.imageUpdates, ...(raw.settings?.imageUpdates ?? {}) },
       lastO365Sync: raw.settings?.lastO365Sync ?? null,
     },
   }

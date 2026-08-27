@@ -23,6 +23,10 @@ export default function Settings() {
   const [restartPolicy, setRestartPolicy] = useState<SettingsView['docker']['restartPolicy']>('unless-stopped')
   const [securityOpt, setSecurityOpt] = useState('')
   const [sessionTtl, setSessionTtl] = useState('')
+  const [selfAutoHours, setSelfAutoHours] = useState('0')
+  const [selfAutoApply, setSelfAutoApply] = useState(false)
+  const [imgAutoHours, setImgAutoHours] = useState('0')
+  const [imgAutoMode, setImgAutoMode] = useState<SettingsView['imageUpdates']['autoMode']>('check')
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -44,14 +48,42 @@ export default function Settings() {
     }
   }
 
+  /** Polls /api/health until the server is back (up to 60s), or reports that it needs manual intervention. */
+  const waitForServerBack = async (): Promise<boolean> => {
+    const deadline = Date.now() + 60_000
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000))
+      try {
+        const res = await fetch('/api/health')
+        if (res.ok) return true
+      } catch {
+        // still down
+      }
+    }
+    return false
+  }
+
   const applyUpdate = async () => {
-    if (!confirm('Pull the latest version from GitHub and install dependencies?')) return
+    if (!confirm('Pull the latest version from GitHub, install dependencies, and rebuild?')) return
     setUpdBusy(true)
     setUpdErr('')
     setUpdResult(null)
     try {
       const res = await api.update.apply()
       setUpdResult(res)
+      if (res.restarting) {
+        const back = await waitForServerBack()
+        setUpdBusy(false)
+        if (back) {
+          setUpdResult(null)
+          await checkUpdates()
+        } else {
+          setUpdErr(
+            'Server did not come back within 60s — it has no supervisor to restart it. Start it manually on the host.',
+          )
+        }
+        return
+      }
       await checkUpdates()
     } catch (e) {
       setUpdErr((e as Error).message)
@@ -69,21 +101,7 @@ export default function Settings() {
     } catch {
       // the process may die before the response flushes — that's fine
     }
-    // poll health until the server is back (up to 60s)
-    const deadline = Date.now() + 60_000
-    let back = false
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 2000))
-      try {
-        const res = await fetch('/api/health')
-        if (res.ok) {
-          back = true
-          break
-        }
-      } catch {
-        // still down
-      }
-    }
+    const back = await waitForServerBack()
     setUpdBusy(false)
     if (back) {
       setUpdResult(null)
@@ -119,6 +137,10 @@ export default function Settings() {
     setRestartPolicy(s.docker.restartPolicy)
     setSecurityOpt(s.docker.securityOpt.join(', '))
     setSessionTtl(String(s.security.sessionTtlHours))
+    setSelfAutoHours(String(s.selfUpdate.autoCheckHours))
+    setSelfAutoApply(s.selfUpdate.autoApply)
+    setImgAutoHours(String(s.imageUpdates.autoCheckHours))
+    setImgAutoMode(s.imageUpdates.autoMode)
   }
 
   useEffect(() => {
@@ -160,6 +182,8 @@ export default function Settings() {
           securityOpt: securityOpt.split(/[,\s]+/).filter(Boolean),
         },
         security: { sessionTtlHours: Number(sessionTtl) },
+        selfUpdate: { autoCheckHours: Number(selfAutoHours) || 0, autoApply: selfAutoApply },
+        imageUpdates: { autoCheckHours: Number(imgAutoHours) || 0, autoMode: imgAutoMode },
       })
       apply(saved)
       setEmPass('')
@@ -235,10 +259,58 @@ export default function Settings() {
         {updResult && (
           <p className={updResult.updated ? 'ok-note' : 'muted'} style={{ marginBottom: 0 }}>
             {updResult.updated
-              ? `Updated ${updResult.from} → ${updResult.to}. ${updResult.installNote}. ${updResult.note}`
+              ? `Updated ${updResult.from} → ${updResult.to}. ${updResult.installNote}. ${updResult.buildNote}. ${updResult.note}`
               : 'Already up to date.'}
           </p>
         )}
+      </div>
+
+      <h2>Auto-update</h2>
+      <div className="panel">
+        <p className="muted" style={{ marginTop: 0 }}>
+          Attaché itself. Off by default. Checking alone is safe — it only flags an available
+          update. Auto-apply also pulls, installs, rebuilds the web frontend, and restarts
+          automatically, but only when install and build both succeed (a broken update never
+          auto-restarts into a crash loop — fix it and use Restart server once resolved).
+        </p>
+        <div className="form-row">
+          <div className="field">
+            <label>Check every N hours (0 = disabled)</label>
+            <input value={selfAutoHours} onChange={(e) => setSelfAutoHours(e.target.value)} />
+          </div>
+        </div>
+        <label className="check-row">
+          <input type="checkbox" checked={selfAutoApply} onChange={(e) => setSelfAutoApply(e.target.checked)} />
+          <span>Also auto-apply (not just check) when an update is found</span>
+        </label>
+      </div>
+
+      <h2>Container image auto-update</h2>
+      <div className="panel">
+        <p className="muted" style={{ marginTop: 0 }}>
+          Agent and MCP tool container definitions. Off by default. Checks every definition's base
+          image against the registry; "check" only updates the light on the Containers page — the
+          other modes also act on whatever's found behind, same as the per-definition
+          Stage/Update/Update+regenerate buttons.
+        </p>
+        <div className="form-row">
+          <div className="field">
+            <label>Check every N hours (0 = disabled)</label>
+            <input value={imgAutoHours} onChange={(e) => setImgAutoHours(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Action on definitions found behind</label>
+            <select
+              value={imgAutoMode}
+              onChange={(e) => setImgAutoMode(e.target.value as SettingsView['imageUpdates']['autoMode'])}
+            >
+              <option value="check">Check only — just flag it</option>
+              <option value="stage">Stage — pull the base image only</option>
+              <option value="update">Update — pull + rebuild (containers untouched)</option>
+              <option value="update-regen">Update + regenerate all agents/instances</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <h2>Server</h2>

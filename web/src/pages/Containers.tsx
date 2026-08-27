@@ -78,6 +78,13 @@ export default function Containers() {
           setDefs(res.defs)
           setDefaultId(res.defaultId)
           setAgents(ag)
+          // seed from persisted checks (scheduled or previous-session) — an
+          // already-fresher in-memory check (this session's own click) wins
+          setUpdateChecks((prev) => {
+            const seeded: Record<string, ImageUpdateCheck> = {}
+            for (const d of res.defs) if (d.lastUpdateCheck) seeded[d.id] = d.lastUpdateCheck
+            return { ...seeded, ...prev }
+          })
           if (keepSel) {
             const cur = res.defs.find((d) => d.id === selId)
             if (cur) select(cur)

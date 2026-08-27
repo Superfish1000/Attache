@@ -5,7 +5,7 @@ import { sendMail, verifySmtp } from '../mailer.js'
 import { ATTACHE_NETWORK, attacheNetworkExists } from '../docker.js'
 
 async function view() {
-  const { server, docker, security, email } = db.settings
+  const { server, docker, security, email, selfUpdate, imageUpdates } = db.settings
   return {
     server,
     docker,
@@ -18,6 +18,8 @@ async function view() {
       from: email.from,
       hasPass: Boolean(email.pass),
     },
+    selfUpdate,
+    imageUpdates,
     dataDir: DATA_DIR,
     // shared bridge network agent/tool containers use to reach each other by
     // alias — created on demand at first container start, not user-configurable
@@ -45,6 +47,8 @@ export default async function settingsRoutes(app: FastifyInstance) {
       }>
       security: Partial<{ sessionTtlHours: number }>
       email: Partial<{ host: string; port: number; secure: boolean; user: string; pass: string; from: string }>
+      selfUpdate: Partial<{ autoCheckHours: number; autoApply: boolean }>
+      imageUpdates: Partial<{ autoCheckHours: number; autoMode: string }>
     }>
     const s = db.settings
 
@@ -117,6 +121,32 @@ export default async function settingsRoutes(app: FastifyInstance) {
       // empty password in the payload means "keep the existing one" (same as the O365 secret)
       if (body.email.pass) e.pass = String(body.email.pass)
       if (body.email.from !== undefined) e.from = String(body.email.from).trim()
+    }
+    if (body.selfUpdate) {
+      if (body.selfUpdate.autoCheckHours !== undefined) {
+        const h = Number(body.selfUpdate.autoCheckHours)
+        if (!Number.isFinite(h) || h < 0 || h > 24 * 30) {
+          return reply.code(400).send({ error: 'selfUpdate.autoCheckHours must be between 0 and 720 (0 disables)' })
+        }
+        s.selfUpdate.autoCheckHours = h
+      }
+      if (body.selfUpdate.autoApply !== undefined) s.selfUpdate.autoApply = Boolean(body.selfUpdate.autoApply)
+    }
+    if (body.imageUpdates) {
+      if (body.imageUpdates.autoCheckHours !== undefined) {
+        const h = Number(body.imageUpdates.autoCheckHours)
+        if (!Number.isFinite(h) || h < 0 || h > 24 * 30) {
+          return reply.code(400).send({ error: 'imageUpdates.autoCheckHours must be between 0 and 720 (0 disables)' })
+        }
+        s.imageUpdates.autoCheckHours = h
+      }
+      if (body.imageUpdates.autoMode !== undefined) {
+        const mode = String(body.imageUpdates.autoMode)
+        if (!['check', 'stage', 'update', 'update-regen'].includes(mode)) {
+          return reply.code(400).send({ error: "imageUpdates.autoMode must be 'check', 'stage', 'update', or 'update-regen'" })
+        }
+        s.imageUpdates.autoMode = mode as typeof s.imageUpdates.autoMode
+      }
     }
 
     save()

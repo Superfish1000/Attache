@@ -98,6 +98,7 @@ export interface ContainerDef {
   memoryMb?: number
   cpus?: number
   shmSizeMb?: number
+  lastUpdateCheck?: ImageUpdateCheck & { checkedAt: string }
   files: ContainerFileDef[]
   mcpServers: McpServerDef[]
   mcpProvisionCommand: string
@@ -118,6 +119,7 @@ export interface McpToolContainerDef {
   memoryMb?: number
   cpus?: number
   shmSizeMb?: number
+  lastUpdateCheck?: ImageUpdateCheck & { checkedAt: string }
   dockerfile: string
   createdAt: string
 }
@@ -235,6 +237,10 @@ export interface SettingsView {
     defaultContainerId: string
   }
   security: { sessionTtlHours: number }
+  /** Attaché's own git-based self-update scheduler. autoCheckHours = 0 disables it. */
+  selfUpdate: { autoCheckHours: number; autoApply: boolean }
+  /** Scheduled check/upgrade for agent + MCP tool container image definitions. autoCheckHours = 0 disables it. */
+  imageUpdates: { autoCheckHours: number; autoMode: 'check' | 'stage' | 'update' | 'update-regen' }
   dataDir: string
   /** Shared bridge network agent/tool containers use to reach each other by alias — created on demand, not user-configurable. */
   network: { name: string; exists: boolean }
@@ -256,6 +262,8 @@ export interface UpdateResult {
   to: string
   pull: string
   installNote: string
+  buildNote: string
+  restarting: boolean
   note: string
 }
 

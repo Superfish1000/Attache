@@ -74,6 +74,15 @@ export interface McpServerDef {
   authToken: string
 }
 
+/** Result of comparing a definition's base image against the registry — see image-updates.ts. On-demand only; persisted onto the definition so the UI's "light" survives a page reload without re-checking. */
+export interface ImageUpdateCheck {
+  status: 'up-to-date' | 'behind' | 'unknown'
+  checkedImage: string
+  localDigest?: string
+  remoteDigest?: string
+  error?: string
+}
+
 /** A reusable container setup: image/runtime defaults + the behavior files agents expose. */
 export interface ContainerDef {
   id: string
@@ -88,6 +97,8 @@ export interface ContainerDef {
   memoryMb?: number
   cpus?: number
   shmSizeMb?: number
+  /** Last "check for updates" result, persisted so it's visible without re-checking on every page load. */
+  lastUpdateCheck?: ImageUpdateCheck & { checkedAt: string }
   files: ContainerFileDef[]
   /** MCP servers provisioned into each agent of this definition. */
   mcpServers: McpServerDef[]
@@ -137,6 +148,8 @@ export interface McpToolContainerDef {
   /** Optional Dockerfile; built the same way container definitions are (native build, falls back to run+commit emulation on daemons whose seccomp breaks builds). */
   dockerfile: string
   createdAt: string
+  /** Last "check for updates" result, persisted so it's visible without re-checking on every page load. */
+  lastUpdateCheck?: ImageUpdateCheck & { checkedAt: string }
 }
 
 /** Per-instance runtime config, copied from the definition at creation and independently editable after — mirrors AgentConfig. */
@@ -238,6 +251,20 @@ export interface EmailSettings {
   from: string
 }
 
+export interface SelfUpdateSettings {
+  /** Hours between automatic "check for updates" runs. 0 = disabled. */
+  autoCheckHours: number
+  /** When a scheduled check finds Attaché itself behind, actually apply it (pull + install + rebuild web + restart) instead of just flagging it. */
+  autoApply: boolean
+}
+
+export interface ImageUpdateSettings {
+  /** Hours between automatic image-update checks (agent + MCP tool container definitions). 0 = disabled. */
+  autoCheckHours: number
+  /** Action taken on any definition a scheduled check finds behind. 'check' = flag only, no pull/rebuild/restart. */
+  autoMode: 'check' | 'stage' | 'update' | 'update-regen'
+}
+
 export interface SyncRun {
   at: string
   total: number
@@ -264,5 +291,7 @@ export interface Settings {
   docker: DockerSettings
   security: SecuritySettings
   email: EmailSettings
+  selfUpdate: SelfUpdateSettings
+  imageUpdates: ImageUpdateSettings
   lastO365Sync: string | null
 }
