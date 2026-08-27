@@ -453,6 +453,10 @@ export async function startAgentContainer(agent: Agent): Promise<ContainerInfo> 
       Binds: [`${bindSrc}:${mountPath}`],
       PortBindings: bindings,
       RestartPolicy: { Name: db.settings.docker.restartPolicy },
+      // lets the agent reach Attaché's own MCP server at
+      // http://host.docker.internal:<api-port>/mcp — resolves automatically
+      // on Docker Desktop (Windows/Mac); needs this explicit mapping on Linux
+      ExtraHosts: ['host.docker.internal:host-gateway'],
       ...(db.settings.docker.securityOpt.length
         ? { SecurityOpt: db.settings.docker.securityOpt }
         : {}),
