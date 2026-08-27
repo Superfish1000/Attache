@@ -69,10 +69,16 @@ interface Regenerated {
 }
 
 /**
- * Checks every agent container definition, then applies `mode` only to the
- * ones found behind — the shared core of the bulk "/update-all" route and
- * the scheduler's periodic sweep (scheduler.ts). save() happens per-check
- * (checkAndPersist) and per-apply is left to the caller.
+ * Checks every agent container definition, then applies `mode` — the
+ * shared core of the bulk "/update-all" route and the scheduler's periodic
+ * sweep (scheduler.ts). For stage/update, defs already up to date are
+ * skipped (no point re-pulling/rebuilding something unchanged). update-regen
+ * always acts regardless of registry staleness — regenerating is about
+ * syncing running agents to whatever's currently locally tagged, which is
+ * exactly what's needed right after a stage/update already brought the
+ * image current; gating it on "behind" would make "regenerate all" a no-op
+ * in that case. save() happens per-check (checkAndPersist) and per-apply is
+ * left to the caller.
  */
 export async function sweepAndApply(mode: UpdateMode) {
   const results: Array<{ defId: string; name: string; skipped?: string; result?: unknown; error?: string }> = []
@@ -83,7 +89,7 @@ export async function sweepAndApply(mode: UpdateMode) {
       continue
     }
     const check = await checkAndPersist(def)
-    if (check.status !== 'behind') {
+    if (mode !== 'update-regen' && check.status !== 'behind') {
       results.push({ defId: def.id, name: def.name, skipped: check.status })
       continue
     }
