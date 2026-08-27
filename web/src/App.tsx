@@ -13,6 +13,7 @@ import McpToolInstances from './pages/McpToolInstances'
 import Chat from './pages/Chat'
 import Login from './pages/Login'
 import Reset from './pages/Reset'
+import OAuthConsent from './pages/OAuthConsent'
 
 function Brand() {
   return (
@@ -110,6 +111,7 @@ function Shell() {
               </AdminRoute>
             }
           />
+          <Route path="/oauth/authorize" element={<OAuthConsent />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
