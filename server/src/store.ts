@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { randomUUID } from 'node:crypto'
-import type { Agent, ContainerDef, McpServerDef, McpToolContainerDef, McpToolInstance, ResetToken, Session, Settings, User } from './types.js'
+import { randomBytes, randomUUID } from 'node:crypto'
+import type { Agent, ContainerDef, McpOAuthClient, McpOAuthCode, McpOAuthToken, McpServerDef, McpToolContainerDef, McpToolInstance, ResetToken, Session, Settings, User } from './types.js'
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 export const DATA_DIR = process.env.ATTACHE_DATA_DIR ?? join(ROOT, 'data')
@@ -16,6 +16,9 @@ interface DB {
   containers: ContainerDef[]
   mcpTools: McpToolContainerDef[]
   mcpToolInstances: McpToolInstance[]
+  mcpOAuthClients: McpOAuthClient[]
+  mcpOAuthCodes: McpOAuthCode[]
+  mcpOAuthTokens: McpOAuthToken[]
   sessions: Session[]
   settings: Settings
   resetTokens: ResetToken[]
@@ -75,6 +78,9 @@ const defaults = (): DB => ({
   containers: [],
   mcpTools: [],
   mcpToolInstances: [],
+  mcpOAuthClients: [],
+  mcpOAuthCodes: [],
+  mcpOAuthTokens: [],
   sessions: [],
   resetTokens: [],
   settings: {
@@ -104,6 +110,7 @@ const defaults = (): DB => ({
     email: { host: '', port: 587, secure: false, user: '', pass: '', from: '' },
     selfUpdate: { autoCheckHours: 0, autoApply: false },
     imageUpdates: { autoCheckHours: 0, autoMode: 'check' },
+    mcpServer: { enabled: false, bearerToken: randomBytes(24).toString('hex') },
     lastO365Sync: null,
   },
 })
@@ -261,6 +268,14 @@ function load(): { db: DB; migrated: boolean } {
     containers,
     mcpTools,
     mcpToolInstances,
+    mcpOAuthClients: raw.mcpOAuthClients ?? [],
+    // prune dead codes/tokens at boot, same principle as resetTokens
+    mcpOAuthCodes: ((raw.mcpOAuthCodes ?? []) as McpOAuthCode[]).filter(
+      (c) => !c.usedAt && Date.parse(c.expiresAt) > Date.now(),
+    ),
+    mcpOAuthTokens: ((raw.mcpOAuthTokens ?? []) as McpOAuthToken[]).filter(
+      (t) => Date.parse(t.expiresAt) > Date.now(),
+    ),
     sessions: raw.sessions ?? [],
     // prune dead reset tokens at boot
     resetTokens: ((raw.resetTokens ?? []) as ResetToken[]).filter(
@@ -283,6 +298,12 @@ function load(): { db: DB; migrated: boolean } {
       email: { ...d.settings.email, ...(raw.settings?.email ?? {}) },
       selfUpdate: { ...d.settings.selfUpdate, ...(raw.settings?.selfUpdate ?? {}) },
       imageUpdates: { ...d.settings.imageUpdates, ...(raw.settings?.imageUpdates ?? {}) },
+      mcpServer: {
+        ...d.settings.mcpServer,
+        ...(raw.settings?.mcpServer ?? {}),
+        // never let a backfill produce an empty token — always keep a real one
+        bearerToken: raw.settings?.mcpServer?.bearerToken || d.settings.mcpServer.bearerToken,
+      },
       lastO365Sync: raw.settings?.lastO365Sync ?? null,
     },
   }
@@ -309,7 +330,8 @@ export function newId(): string {
     db.agents.some((a) => a.id === id) ||
     db.containers.some((c) => c.id === id) ||
     db.mcpTools.some((t) => t.id === id) ||
-    db.mcpToolInstances.some((t) => t.id === id)
+    db.mcpToolInstances.some((t) => t.id === id) ||
+    db.mcpOAuthClients.some((c) => c.id === id)
   ) {
     id = randomUUID().split('-')[0]
   }

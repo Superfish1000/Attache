@@ -285,6 +285,51 @@ export interface ResetToken {
   usedAt?: string
 }
 
+export interface McpServerSettings {
+  /** Off by default — the /mcp, OAuth, and well-known routes 503 while false. */
+  enabled: boolean
+  /** Generated once; viewable/regeneratable in Settings. Accepted as an alternative to a valid OAuth token on every MCP request. */
+  bearerToken: string
+}
+
+/** DCR-registered OAuth client. CIMD clients are fetched+cached in memory instead — see mcp-oauth.ts — and are not stored here. */
+export interface McpOAuthClient {
+  id: string
+  clientId: string
+  name: string
+  redirectUris: string[]
+  applicationType: 'web' | 'native'
+  createdAt: string
+  lastUsedAt?: string
+}
+
+/** Single-use authorization code, PKCE-bound. Pruned at boot once expired or used. */
+export interface McpOAuthCode {
+  code: string
+  clientId: string
+  /** For CIMD clients this is the client_id URL itself; for DCR clients it's the same as clientId. */
+  clientRef: string
+  redirectUri: string
+  codeChallenge: string
+  codeChallengeMethod: 'S256'
+  resource: string
+  createdAt: string
+  expiresAt: string
+  usedAt?: string
+}
+
+/** Access or refresh token. Pruned at boot once expired. */
+export interface McpOAuthToken {
+  token: string
+  type: 'access' | 'refresh'
+  clientId: string
+  resource: string
+  createdAt: string
+  expiresAt: string
+  /** For an access token, the refresh token it was issued alongside (if any) — revoking one cascades to the other. */
+  pairedToken?: string
+}
+
 export interface Settings {
   o365: O365Settings
   server: ServerSettings
@@ -293,5 +338,6 @@ export interface Settings {
   email: EmailSettings
   selfUpdate: SelfUpdateSettings
   imageUpdates: ImageUpdateSettings
+  mcpServer: McpServerSettings
   lastO365Sync: string | null
 }
