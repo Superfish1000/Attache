@@ -2,9 +2,12 @@ import type {
   Agent,
   AgentConfig,
   AgentDocInfo,
+  BulkImageUpdateEntry,
   ContainerDef,
   ContainerState,
   ContainersResponse,
+  ImageUpdateCheck,
+  ImageUpdateResult,
   McpInfo,
   McpProvisionResult,
   McpStatus,
@@ -18,6 +21,7 @@ import type {
   StatusResponse,
   SyncRun,
   UpdateCheck,
+  UpdateMode,
   UpdateResult,
   User,
 } from './types'
@@ -143,6 +147,11 @@ export const api = {
         method: 'POST',
       }),
     remove: (id: string) => req<void>(`/api/container-defs/${id}`, { method: 'DELETE' }),
+    updateCheck: (id: string) => req<ImageUpdateCheck>(`/api/container-defs/${id}/update-check`),
+    upgradeImage: (id: string, mode: UpdateMode) =>
+      req<ImageUpdateResult>(`/api/container-defs/${id}/update`, json('POST', { mode })),
+    upgradeAll: (mode: UpdateMode) =>
+      req<{ results: BulkImageUpdateEntry[] }>('/api/container-defs/update-all', json('POST', { mode })),
   },
   mcpTools: {
     list: () => req<{ tools: McpToolContainerDef[] }>('/api/mcp-tools'),
@@ -152,6 +161,11 @@ export const api = {
     remove: (id: string) => req<void>(`/api/mcp-tools/${id}`, { method: 'DELETE' }),
     build: (id: string) =>
       req<{ ok: boolean; method: string; output: string }>(`/api/mcp-tools/${id}/build`, { method: 'POST' }),
+    updateCheck: (id: string) => req<ImageUpdateCheck>(`/api/mcp-tools/${id}/update-check`),
+    upgradeImage: (id: string, mode: UpdateMode) =>
+      req<ImageUpdateResult>(`/api/mcp-tools/${id}/update`, json('POST', { mode })),
+    upgradeAll: (mode: UpdateMode) =>
+      req<{ results: BulkImageUpdateEntry[] }>('/api/mcp-tools/update-all', json('POST', { mode })),
   },
   mcpToolInstances: {
     list: () => req<{ instances: McpToolInstance[] }>('/api/mcp-tool-instances'),

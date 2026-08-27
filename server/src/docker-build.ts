@@ -40,6 +40,12 @@ export function parseSimpleDockerfile(text: string): { from: string; runs: strin
 
 export const tail = (s: string) => s.slice(-1500)
 
+/** Pulls the latest content for image:tag without building/tagging anything else. */
+export async function pullImage(image: string): Promise<{ ok: boolean; output: string }> {
+  const res = await runDocker(['pull', image])
+  return { ok: res.code === 0, output: tail(res.output) }
+}
+
 export interface BuildResult {
   ok: boolean
   method: 'build' | 'run-commit'

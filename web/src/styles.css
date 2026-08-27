@@ -349,6 +349,77 @@ label {
   border-color: var(--accent-dim);
 }
 
+/* image-update "light" — flags whether a definition's base image is behind the registry */
+.update-light {
+  font-size: 10px;
+  vertical-align: middle;
+  cursor: default;
+}
+
+.update-light-none {
+  color: var(--muted);
+  opacity: 0.5;
+}
+
+.update-light-ok {
+  color: var(--green);
+}
+
+.update-light-behind {
+  color: var(--yellow);
+}
+
+.update-light-unknown {
+  color: var(--muted);
+}
+
+/* split button: primary action + dropdown for alternate actions (Stage / Update / Update+regenerate) */
+.split-btn {
+  position: relative;
+  display: inline-flex;
+}
+
+.split-btn-main {
+  border-radius: 6px 0 0 6px;
+}
+
+.split-btn-toggle {
+  border-radius: 0 6px 6px 0;
+  border-left: 1px solid var(--bg);
+  padding: 7px 8px;
+}
+
+.split-btn-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  margin-top: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 200px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.split-btn-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.split-btn-item:hover {
+  background: var(--panel);
+  color: var(--accent);
+}
+
 .btn-row {
   display: flex;
   gap: 8px;

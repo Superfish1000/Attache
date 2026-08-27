@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
-import { Chip, ErrorBanner, normalizeImageRef, parseLimitField } from '../components'
-import type { McpToolContainerDef, McpToolInstance } from '../types'
+import {
+  Chip,
+  ErrorBanner,
+  normalizeImageRef,
+  parseLimitField,
+  UpdateLight,
+  UpgradeSplitButton,
+} from '../components'
+import type { ImageUpdateCheck, McpToolContainerDef, McpToolInstance, UpdateMode } from '../types'
 
 export default function McpToolContainers() {
   const [defs, setDefs] = useState<McpToolContainerDef[]>([])
@@ -23,6 +30,10 @@ export default function McpToolContainers() {
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  const [updateChecks, setUpdateChecks] = useState<Record<string, ImageUpdateCheck>>({})
+  const [checkingAll, setCheckingAll] = useState(false)
+  const [upgradeBusyId, setUpgradeBusyId] = useState('')
+  const [bulkUpgrading, setBulkUpgrading] = useState(false)
 
   const select = useCallback((def: McpToolContainerDef) => {
     setSelId(def.id)
@@ -67,6 +78,64 @@ export default function McpToolContainers() {
   }
 
   const instanceCount = (defId: string) => instances.filter((i) => i.defId === defId).length
+
+  const checkOne = async (id: string) => {
+    try {
+      const check = await api.mcpTools.updateCheck(id)
+      setUpdateChecks((prev) => ({ ...prev, [id]: check }))
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
+  const checkAllUpdates = async () => {
+    setCheckingAll(true)
+    setErr('')
+    try {
+      await Promise.all(defs.map((d) => checkOne(d.id)))
+    } finally {
+      setCheckingAll(false)
+    }
+  }
+
+  const upgradeOne = async (id: string, mode: UpdateMode) => {
+    setUpgradeBusyId(id)
+    setErr('')
+    try {
+      const res = await api.mcpTools.upgradeImage(id, mode)
+      const def = defs.find((d) => d.id === id)
+      flash(
+        `${def?.name ?? 'Definition'}: ${mode} ${res.ok ? 'succeeded' : 'had errors'}` +
+          (res.regenerated.length ? ` — ${res.regenerated.filter((r) => r.ok).length}/${res.regenerated.length} instance(s) regenerated` : ''),
+      )
+      await checkOne(id)
+      reload()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setUpgradeBusyId('')
+    }
+  }
+
+  const upgradeAll = async (mode: UpdateMode) => {
+    setBulkUpgrading(true)
+    setErr('')
+    try {
+      const { results } = await api.mcpTools.upgradeAll(mode)
+      const acted = results.filter((r) => r.result)
+      flash(
+        acted.length
+          ? `${mode} applied to ${acted.length} definition(s) that were behind`
+          : 'Nothing to upgrade — every definition is already up to date',
+      )
+      await checkAllUpdates()
+      reload()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBulkUpgrading(false)
+    }
+  }
 
   const newDef = async () => {
     setErr('')
@@ -170,6 +239,7 @@ export default function McpToolContainers() {
               <th>Name</th>
               <th>Image</th>
               <th>Instances</th>
+              <th>Update</th>
               <th></th>
             </tr>
           </thead>
@@ -190,6 +260,9 @@ export default function McpToolContainers() {
                 <td className="mono">{d.image}</td>
                 <td>{instanceCount(d.id)}</td>
                 <td>
+                  <UpdateLight check={updateChecks[d.id]} />
+                </td>
+                <td>
                   <button className="btn" onClick={() => select(d)}>
                     Edit
                   </button>
@@ -202,6 +275,10 @@ export default function McpToolContainers() {
           <button className="btn btn-primary" onClick={newDef}>
             New tool container
           </button>
+          <button className="btn" disabled={checkingAll} onClick={checkAllUpdates}>
+            {checkingAll ? 'Checking…' : 'Check for updates'}
+          </button>
+          <UpgradeSplitButton onAction={upgradeAll} busy={bulkUpgrading} label="Upgrade all" />
         </div>
       </div>
 
@@ -229,6 +306,20 @@ export default function McpToolContainers() {
                   style={{ width: '100%' }}
                 />
               </div>
+            </div>
+            <div className="btn-row" style={{ alignItems: 'center', marginTop: 8 }}>
+              <UpdateLight check={updateChecks[selId]} />
+              <button className="btn" disabled={checkingAll} onClick={() => checkOne(selId)}>
+                Check for updates
+              </button>
+              <UpgradeSplitButton onAction={(mode) => upgradeOne(selId, mode)} busy={upgradeBusyId === selId} />
+              {updateChecks[selId] && (
+                <span className="muted" style={{ alignSelf: 'center' }}>
+                  {updateChecks[selId].status === 'behind' && `update available for ${updateChecks[selId].checkedImage}`}
+                  {updateChecks[selId].status === 'up-to-date' && `${updateChecks[selId].checkedImage} is up to date`}
+                  {updateChecks[selId].status === 'unknown' && (updateChecks[selId].error || 'could not check')}
+                </span>
+              )}
             </div>
             {imgMode === 'dockerfile' && (
               <details className="doc-exp" style={{ marginTop: 10 }}>

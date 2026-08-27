@@ -1,8 +1,53 @@
 import type { FastifyInstance } from 'fastify'
 import { db, newId, save } from '../store.js'
 import { requireAdmin } from '../auth.js'
-import { buildDockerfileImage } from '../docker-build.js'
+import { buildDockerfileImage, pullImage } from '../docker-build.js'
+import { checkImageUpdate, firstFromImage } from '../image-updates.js'
+import { dockerAvailable, removeToolContainer, startToolContainer } from '../docker.js'
 import type { McpToolContainerDef } from '../types.js'
+
+type UpdateMode = 'stage' | 'update' | 'update-regen'
+
+interface Regenerated {
+  instanceId: string
+  ok: boolean
+  error?: string
+}
+
+/** The image this definition's "check for updates" / "upgrade" acts on: the Dockerfile's FROM image, or the definition's own image if there's no Dockerfile. */
+function checkedImageFor(def: McpToolContainerDef): string | null {
+  if (def.dockerfile.trim()) return firstFromImage(def.dockerfile)
+  return def.image.trim() || null
+}
+
+/**
+ * stage = pull only. update = pull + rebuild (or just pull, for a
+ * non-Dockerfile definition). update-regen additionally
+ * remove+recreate+starts every instance of this definition, same steps as
+ * the existing per-instance regenerate route.
+ */
+async function applyImageUpdate(def: McpToolContainerDef, image: string, mode: UpdateMode) {
+  const pull = await pullImage(image)
+  if (mode === 'stage') return { ok: pull.ok, mode, pull: pull.output, regenerated: [] as Regenerated[] }
+
+  const build = def.dockerfile.trim()
+    ? await buildDockerfileImage(def.image, def.dockerfile, `attache-tool-build-${def.id}`, db.settings.docker.securityOpt)
+    : undefined
+
+  const regenerated: Regenerated[] = []
+  if (mode === 'update-regen') {
+    for (const instance of db.mcpToolInstances.filter((i) => i.defId === def.id)) {
+      try {
+        await removeToolContainer(instance.id)
+        await startToolContainer(instance)
+        regenerated.push({ instanceId: instance.id, ok: true })
+      } catch (err) {
+        regenerated.push({ instanceId: instance.id, ok: false, error: (err as Error).message })
+      }
+    }
+  }
+  return { ok: pull.ok && (build?.ok ?? true), mode, pull: pull.output, build, regenerated }
+}
 
 /**
  * Validates/merges body fields onto def. Returns an error string or null.
@@ -133,5 +178,63 @@ export default async function mcpToolRoutes(app: FastifyInstance) {
       `attache-tool-build-${def.id}`,
       db.settings.docker.securityOpt,
     )
+  })
+
+  /** On-demand only — checks the registry's current digest against what's cached locally. Never called automatically (registries rate-limit anonymous checks). */
+  app.get('/:id/update-check', async (req, reply) => {
+    const def = db.mcpTools.find((t) => t.id === (req.params as { id: string }).id)
+    if (!def) return reply.code(404).send({ error: 'tool container definition not found' })
+    const image = checkedImageFor(def)
+    if (!image) return { status: 'unknown' as const, checkedImage: '', error: 'no image to check' }
+    return checkImageUpdate(image)
+  })
+
+  app.post('/:id/update', async (req, reply) => {
+    const def = db.mcpTools.find((t) => t.id === (req.params as { id: string }).id)
+    if (!def) return reply.code(404).send({ error: 'tool container definition not found' })
+    const { mode } = (req.body ?? {}) as { mode?: string }
+    if (!mode || !['stage', 'update', 'update-regen'].includes(mode)) {
+      return reply.code(400).send({ error: "mode must be 'stage', 'update', or 'update-regen'" })
+    }
+    const image = checkedImageFor(def)
+    if (!image) return reply.code(400).send({ error: 'no image to check/pull for this definition' })
+    if (!(await dockerAvailable())) return reply.code(503).send({ error: 'Docker daemon is not available' })
+    try {
+      const result = await applyImageUpdate(def, image, mode as UpdateMode)
+      save()
+      return result
+    } catch (err) {
+      req.log.error(err)
+      return reply.code(500).send({ error: `update failed: ${(err as Error).message}` })
+    }
+  })
+
+  /** Checks every definition, then applies `mode` only to the ones actually found behind. */
+  app.post('/update-all', async (req, reply) => {
+    const { mode } = (req.body ?? {}) as { mode?: string }
+    if (!mode || !['stage', 'update', 'update-regen'].includes(mode)) {
+      return reply.code(400).send({ error: "mode must be 'stage', 'update', or 'update-regen'" })
+    }
+    if (!(await dockerAvailable())) return reply.code(503).send({ error: 'Docker daemon is not available' })
+    const results = []
+    for (const def of db.mcpTools) {
+      const image = checkedImageFor(def)
+      if (!image) {
+        results.push({ defId: def.id, name: def.name, skipped: 'no image to check' })
+        continue
+      }
+      const check = await checkImageUpdate(image)
+      if (check.status !== 'behind') {
+        results.push({ defId: def.id, name: def.name, skipped: check.status })
+        continue
+      }
+      try {
+        results.push({ defId: def.id, name: def.name, result: await applyImageUpdate(def, image, mode as UpdateMode) })
+      } catch (err) {
+        results.push({ defId: def.id, name: def.name, error: (err as Error).message })
+      }
+    }
+    save()
+    return { results }
   })
 }

@@ -8,7 +8,7 @@
     "start": "tsx src/index.ts",
     "create-admin": "tsx src/tools/create-admin.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test src/o365-diff.test.ts src/mcp-tools.test.ts"
+    "test": "node --import tsx --test src/o365-diff.test.ts src/mcp-tools.test.ts src/image-updates.test.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

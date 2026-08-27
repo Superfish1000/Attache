@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
+import type { ImageUpdateCheck, UpdateMode } from './types'
 
 export type ChipTone = 'ok' | 'warn' | 'err' | 'off'
 
@@ -348,6 +349,103 @@ export function CopyButton({ text }: { text: string }) {
     <button type="button" className="btn btn-copy" title={`Copy ${text}`} onClick={copy}>
       {status === 'copied' ? 'Copied' : status === 'failed' ? 'Copy failed' : 'Copy'}
     </button>
+  )
+}
+
+/** Small status dot flagging an image-update check result — "not checked yet" until a check runs (checks are on-demand only; registries rate-limit anonymous checks). */
+export function UpdateLight({ check }: { check: ImageUpdateCheck | null | undefined }) {
+  if (!check) {
+    return (
+      <span className="update-light update-light-none" title="Not checked yet">
+        ●
+      </span>
+    )
+  }
+  if (check.status === 'behind') {
+    return (
+      <span className="update-light update-light-behind" title={`Update available for ${check.checkedImage}`}>
+        ●
+      </span>
+    )
+  }
+  if (check.status === 'up-to-date') {
+    return (
+      <span className="update-light update-light-ok" title={`Up to date (${check.checkedImage})`}>
+        ●
+      </span>
+    )
+  }
+  return (
+    <span
+      className="update-light update-light-unknown"
+      title={check.error ? `Couldn't check: ${check.error}` : 'Unknown'}
+    >
+      ●
+    </span>
+  )
+}
+
+/**
+ * Primary click = "Update" (pull the latest base + rebuild); the dropdown
+ * offers "Stage" (pull only, no rebuild, no container impact) and "Update +
+ * regenerate" (also remove+recreate+starts every agent/instance on this
+ * definition). Shared between agent container defs and MCP tool defs.
+ */
+export function UpgradeSplitButton({
+  onAction,
+  disabled,
+  busy,
+  label = 'Update',
+}: {
+  onAction: (mode: UpdateMode) => void
+  disabled?: boolean
+  busy?: boolean
+  label?: string
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="split-btn">
+      <button
+        className="btn btn-primary split-btn-main"
+        disabled={disabled || busy}
+        onClick={() => onAction('update')}
+      >
+        {busy ? 'Working…' : label}
+      </button>
+      <button
+        type="button"
+        className="btn btn-primary split-btn-toggle"
+        disabled={disabled || busy}
+        onClick={() => setOpen((o) => !o)}
+        title="More update options"
+      >
+        ▾
+      </button>
+      {open && (
+        <div className="split-btn-menu" onMouseLeave={() => setOpen(false)}>
+          <button
+            type="button"
+            className="split-btn-item"
+            onClick={() => {
+              setOpen(false)
+              onAction('stage')
+            }}
+          >
+            Stage (download only)
+          </button>
+          <button
+            type="button"
+            className="split-btn-item"
+            onClick={() => {
+              setOpen(false)
+              onAction('update-regen')
+            }}
+          >
+            Update + regenerate all
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 

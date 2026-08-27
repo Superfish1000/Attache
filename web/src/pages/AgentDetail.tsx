@@ -497,13 +497,27 @@ export default function AgentDetail() {
         {admin && defs.length > 0 && (
           <div className="field">
             <label>Container definition (the Files section below follows this)</label>
-            <select value={agent.containerId} onChange={(e) => void switchDef(e.target.value)}>
-              {defs.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name} ({d.image})
-                </option>
-              ))}
-            </select>
+            <div className="btn-row">
+              <select
+                value={agent.containerId}
+                onChange={(e) => void switchDef(e.target.value)}
+                style={{ flex: 1 }}
+              >
+                {defs.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({d.image})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn"
+                title="Open this definition on the Containers page"
+                onClick={() => navigate(`/containers?defId=${agent.containerId}`)}
+              >
+                Edit definition
+              </button>
+            </div>
           </div>
         )}
         <div className="field">

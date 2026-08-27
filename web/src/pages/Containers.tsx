@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import {
   Chip,
@@ -9,11 +10,15 @@ import {
   McpTemplatesHelp,
   normalizeImageRef,
   parseLimitField,
+  UpdateLight,
+  UpgradeSplitButton,
 } from '../components'
 import McpToolContainers from './McpToolContainers'
-import type { Agent, ContainerDef, ContainerFileDef, McpServerDef } from '../types'
+import type { Agent, ContainerDef, ContainerFileDef, ImageUpdateCheck, McpServerDef, UpdateMode } from '../types'
 
 export default function Containers() {
+  const [searchParams] = useSearchParams()
+  const autoSelectedRef = useRef(false)
   const [defs, setDefs] = useState<ContainerDef[]>([])
   const [defaultId, setDefaultId] = useState('')
   const [agents, setAgents] = useState<Agent[]>([])
@@ -40,6 +45,10 @@ export default function Containers() {
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  const [updateChecks, setUpdateChecks] = useState<Record<string, ImageUpdateCheck>>({})
+  const [checkingAll, setCheckingAll] = useState(false)
+  const [upgradeBusyId, setUpgradeBusyId] = useState('')
+  const [bulkUpgrading, setBulkUpgrading] = useState(false)
 
   const select = useCallback((def: ContainerDef) => {
     setSelId(def.id)
@@ -94,12 +103,82 @@ export default function Containers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Jump-to-definition from the agent detail page (?defId=...) — select it once, then leave the user free to pick something else.
+  useEffect(() => {
+    if (autoSelectedRef.current) return
+    const wanted = searchParams.get('defId')
+    if (!wanted) return
+    const def = defs.find((d) => d.id === wanted)
+    if (def) {
+      select(def)
+      autoSelectedRef.current = true
+    }
+  }, [defs, searchParams, select])
+
   const flash = (msg: string) => {
     setNote(msg)
     setTimeout(() => setNote(''), 2500)
   }
 
   const usedBy = (id: string) => agents.filter((a) => a.containerId === id).length
+
+  const checkOne = async (id: string) => {
+    try {
+      const check = await api.containerDefs.updateCheck(id)
+      setUpdateChecks((prev) => ({ ...prev, [id]: check }))
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
+  const checkAllUpdates = async () => {
+    setCheckingAll(true)
+    setErr('')
+    try {
+      await Promise.all(defs.map((d) => checkOne(d.id)))
+    } finally {
+      setCheckingAll(false)
+    }
+  }
+
+  const upgradeOne = async (id: string, mode: UpdateMode) => {
+    setUpgradeBusyId(id)
+    setErr('')
+    try {
+      const res = await api.containerDefs.upgradeImage(id, mode)
+      const def = defs.find((d) => d.id === id)
+      flash(
+        `${def?.name ?? 'Definition'}: ${mode} ${res.ok ? 'succeeded' : 'had errors'}` +
+          (res.regenerated.length ? ` — ${res.regenerated.filter((r) => r.ok).length}/${res.regenerated.length} agent(s) regenerated` : ''),
+      )
+      await checkOne(id)
+      reload()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setUpgradeBusyId('')
+    }
+  }
+
+  const upgradeAll = async (mode: UpdateMode) => {
+    setBulkUpgrading(true)
+    setErr('')
+    try {
+      const { results } = await api.containerDefs.upgradeAll(mode)
+      const acted = results.filter((r) => r.result)
+      flash(
+        acted.length
+          ? `${mode} applied to ${acted.length} definition(s) that were behind`
+          : 'Nothing to upgrade — every definition is already up to date',
+      )
+      await checkAllUpdates()
+      reload()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBulkUpgrading(false)
+    }
+  }
 
   const newDef = async () => {
     setErr('')
@@ -242,6 +321,7 @@ export default function Containers() {
               <th>Image</th>
               <th>Files</th>
               <th>Agents</th>
+              <th>Update</th>
               <th></th>
             </tr>
           </thead>
@@ -264,6 +344,9 @@ export default function Containers() {
                 <td>{d.files.length}</td>
                 <td>{usedBy(d.id)}</td>
                 <td>
+                  <UpdateLight check={updateChecks[d.id]} />
+                </td>
+                <td>
                   <button className="btn" onClick={() => select(d)}>
                     Edit
                   </button>
@@ -276,6 +359,10 @@ export default function Containers() {
           <button className="btn btn-primary" onClick={newDef}>
             New definition
           </button>
+          <button className="btn" disabled={checkingAll} onClick={checkAllUpdates}>
+            {checkingAll ? 'Checking…' : 'Check for updates'}
+          </button>
+          <UpgradeSplitButton onAction={upgradeAll} busy={bulkUpgrading} label="Upgrade all" />
         </div>
       </div>
 
@@ -306,6 +393,20 @@ export default function Containers() {
                   style={{ width: '100%' }}
                 />
               </div>
+            </div>
+            <div className="btn-row" style={{ alignItems: 'center', marginTop: 8 }}>
+              <UpdateLight check={updateChecks[selId]} />
+              <button className="btn" disabled={checkingAll} onClick={() => checkOne(selId)}>
+                Check for updates
+              </button>
+              <UpgradeSplitButton onAction={(mode) => upgradeOne(selId, mode)} busy={upgradeBusyId === selId} />
+              {updateChecks[selId] && (
+                <span className="muted" style={{ alignSelf: 'center' }}>
+                  {updateChecks[selId].status === 'behind' && `update available for ${updateChecks[selId].checkedImage}`}
+                  {updateChecks[selId].status === 'up-to-date' && `${updateChecks[selId].checkedImage} is up to date`}
+                  {updateChecks[selId].status === 'unknown' && (updateChecks[selId].error || 'could not check')}
+                </span>
+              )}
             </div>
             {imgMode === 'dockerfile' && (
               <details className="doc-exp" style={{ marginTop: 10 }}>

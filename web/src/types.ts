@@ -61,6 +61,32 @@ export interface McpProvisionResult {
   output: string
 }
 
+export type UpdateMode = 'stage' | 'update' | 'update-regen'
+
+export interface ImageUpdateCheck {
+  status: 'up-to-date' | 'behind' | 'unknown'
+  checkedImage: string
+  localDigest?: string
+  remoteDigest?: string
+  error?: string
+}
+
+export interface ImageUpdateResult {
+  ok: boolean
+  mode: UpdateMode
+  pull: string
+  build?: { ok: boolean; method: string; output: string }
+  regenerated: Array<{ agentId?: string; instanceId?: string; ok: boolean; error?: string }>
+}
+
+export interface BulkImageUpdateEntry {
+  defId: string
+  name: string
+  skipped?: string
+  result?: ImageUpdateResult
+  error?: string
+}
+
 export interface ContainerDef {
   id: string
   name: string
