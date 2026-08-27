@@ -18,6 +18,8 @@ import containerDefRoutes from './routes/container-defs.js'
 import mcpToolRoutes from './routes/mcp-tools.js'
 import mcpToolInstanceRoutes from './routes/mcp-tool-instances.js'
 import updateRoutes from './routes/update.js'
+import mcpServerRoutes from './routes/mcp-server.js'
+import mcpOAuthRoutes from './routes/mcp-oauth-routes.js'
 
 const app = Fastify({ logger: true })
 
@@ -47,6 +49,8 @@ await app.register(mcpToolRoutes, { prefix: '/api/mcp-tools' })
 await app.register(mcpToolInstanceRoutes, { prefix: '/api/mcp-tool-instances' })
 await app.register(updateRoutes, { prefix: '/api/update' })
 await app.register(statusRoutes, { prefix: '/api' })
+await app.register(mcpServerRoutes) // no prefix — mounts /mcp directly
+await app.register(mcpOAuthRoutes) // no prefix — mounts /register, /authorize, /token, etc. directly
 
 // serve the built GUI when it exists (production); dev uses the Vite server
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url))
