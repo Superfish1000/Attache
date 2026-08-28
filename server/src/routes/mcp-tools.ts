@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { db, newId, save } from '../store.js'
 import { requireAdmin } from '../auth.js'
 import { buildDockerfileImage, pullImage } from '../docker-build.js'
-import { checkImageUpdate, firstFromImage } from '../image-updates.js'
+import { checkImageUpdate, firstFromImage, sha256Hex } from '../image-updates.js'
 import { dockerAvailable, removeToolContainer, startToolContainer } from '../docker.js'
 import type { ImageUpdateCheck, McpToolContainerDef } from '../types.js'
 
@@ -18,6 +18,12 @@ interface Regenerated {
 export function checkedImageFor(def: McpToolContainerDef): string | null {
   if (def.dockerfile.trim()) return firstFromImage(def.dockerfile)
   return def.image.trim() || null
+}
+
+/** True when this definition has a Dockerfile with edits since its last successful build — distinct from checkedImageFor's registry-freshness check, which only ever looks at the FROM image and can't see Dockerfile-content changes at all. */
+export function dockerfileChanged(def: McpToolContainerDef): boolean {
+  if (!def.dockerfile.trim()) return false
+  return sha256Hex(def.dockerfile) !== def.lastBuiltDockerfileHash
 }
 
 /** Runs a check, persists it onto the definition (so the UI's light survives a reload / reflects scheduled checks), and returns it. Exported for the scheduler's sweep. */
@@ -44,6 +50,7 @@ export async function applyImageUpdate(def: McpToolContainerDef, image: string, 
   const build = def.dockerfile.trim()
     ? await buildDockerfileImage(def.image, def.dockerfile, `attache-tool-build-${def.id}`, db.settings.docker.securityOpt)
     : undefined
+  if (build?.ok) def.lastBuiltDockerfileHash = sha256Hex(def.dockerfile)
 
   const regenerated: Regenerated[] = []
   if (mode === 'update-regen') {
@@ -133,7 +140,9 @@ export default async function mcpToolRoutes(app: FastifyInstance) {
     if (!requireAdmin(req, reply)) return reply
   })
 
-  app.get('/', async () => ({ tools: db.mcpTools }))
+  app.get('/', async () => ({
+    tools: db.mcpTools.map((t) => ({ ...t, dockerfileChanged: dockerfileChanged(t) })),
+  }))
 
   app.post('/', async (req, reply) => {
     const def: McpToolContainerDef = {
@@ -183,12 +192,17 @@ export default async function mcpToolRoutes(app: FastifyInstance) {
     if (!def.image.trim() || def.image.includes(' ')) {
       return reply.code(400).send({ error: 'definition image must be a valid tag to build into' })
     }
-    return buildDockerfileImage(
+    const result = await buildDockerfileImage(
       def.image,
       def.dockerfile,
       `attache-tool-build-${def.id}`,
       db.settings.docker.securityOpt,
     )
+    if (result.ok) {
+      def.lastBuiltDockerfileHash = sha256Hex(def.dockerfile)
+      save()
+    }
+    return result
   })
 
   /** On-demand by default (via this route) — checks the registry's current digest against what's cached locally, persisting the result. Also driven on a schedule if settings.imageUpdates.autoCheckHours is set. */

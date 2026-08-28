@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import {
   Chip,
+  DockerfileChangedChip,
   ErrorBanner,
   normalizeImageRef,
   parseLimitField,
@@ -243,7 +244,10 @@ export default function McpToolContainers() {
       await persistDef()
       const res = await api.mcpTools.build(selId)
       setBuildOut(`${res.ok ? '✓ built' : '✗ failed'} (${res.method})\n${res.output}`)
-      if (res.ok) flash(`Image ${image} built via ${res.method}`)
+      if (res.ok) {
+        flash(`Image ${image} built via ${res.method}`)
+        reload()
+      }
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -307,7 +311,7 @@ export default function McpToolContainers() {
                 <td className="mono">{d.image}</td>
                 <td>{instanceCount(d.id)}</td>
                 <td>
-                  <UpdateLight check={updateChecks[d.id]} />
+                  <UpdateLight check={updateChecks[d.id]} /> <DockerfileChangedChip changed={d.dockerfileChanged} />
                 </td>
                 <td>
                   <button className="btn" onClick={() => (selId === d.id ? setSelId('') : select(d))}>
@@ -356,6 +360,7 @@ export default function McpToolContainers() {
             </div>
             <div className="btn-row" style={{ alignItems: 'center', marginTop: 8 }}>
               <UpdateLight check={updateChecks[selId]} />
+              <DockerfileChangedChip changed={defs.find((d) => d.id === selId)?.dockerfileChanged} />
               <button className="btn" disabled={checkingAll} onClick={() => checkOne(selId)}>
                 Check for updates
               </button>

@@ -385,6 +385,16 @@ export function UpdateLight({ check }: { check: ImageUpdateCheck | null | undefi
   )
 }
 
+/** Flags a Dockerfile with edits since its last successful build — distinct from UpdateLight (registry vs. local build) and NeedsRegenLight (running container vs. local build); this one is Dockerfile text vs. what was actually built. */
+export function DockerfileChangedChip({ changed }: { changed: boolean | undefined }) {
+  if (!changed) return null
+  return (
+    <span title="The Dockerfile has been edited since the last successful build — click Build image to apply it">
+      <Chip tone="warn">Dockerfile changed — rebuild needed</Chip>
+    </span>
+  )
+}
+
 /** Small status dot flagging whether a running container predates the current locally-built image — distinct from UpdateLight, which flags the registry vs. the local build. */
 export function NeedsRegenLight({ stale }: { stale: boolean | null | undefined }) {
   if (stale === true) {

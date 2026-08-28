@@ -105,6 +105,9 @@ export interface ContainerDef {
   mcpTokenEnvKey: string
   mcpLoginCommand: string
   dockerfile: string
+  lastBuiltDockerfileHash?: string
+  /** Computed by the API: true when `dockerfile` has edits since `lastBuiltDockerfileHash` was recorded. */
+  dockerfileChanged?: boolean
   createdAt: string
 }
 
@@ -121,6 +124,9 @@ export interface McpToolContainerDef {
   shmSizeMb?: number
   lastUpdateCheck?: ImageUpdateCheck & { checkedAt: string }
   dockerfile: string
+  lastBuiltDockerfileHash?: string
+  /** Computed by the API: true when `dockerfile` has edits since `lastBuiltDockerfileHash` was recorded. */
+  dockerfileChanged?: boolean
   createdAt: string
 }
 

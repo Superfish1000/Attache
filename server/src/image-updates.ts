@@ -1,5 +1,11 @@
+import { createHash } from 'node:crypto'
 import { runDocker } from './docker-build.js'
 import type { ImageUpdateCheck } from './types.js'
+
+/** sha256 hex of a Dockerfile's text — lets a definition know whether it has unbuilt edits since its last successful build. */
+export function sha256Hex(text: string): string {
+  return createHash('sha256').update(text).digest('hex')
+}
 
 /** First `FROM <image>` line of a Dockerfile, or null if there isn't one. */
 export function firstFromImage(dockerfile: string): string | null {

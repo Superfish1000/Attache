@@ -128,6 +128,8 @@ export interface ContainerDef {
    * FROM+RUN files are emulated via run (with settings securityOpt) + commit.
    */
   dockerfile: string
+  /** sha256 hex of `dockerfile`'s content as of the last successful build — lets the API compute whether the Dockerfile has unbuilt edits. */
+  lastBuiltDockerfileHash?: string
   createdAt: string
 }
 
@@ -147,6 +149,8 @@ export interface McpToolContainerDef {
   shmSizeMb?: number
   /** Optional Dockerfile; built the same way container definitions are (native build, falls back to run+commit emulation on daemons whose seccomp breaks builds). */
   dockerfile: string
+  /** sha256 hex of `dockerfile`'s content as of the last successful build — lets the API compute whether the Dockerfile has unbuilt edits. */
+  lastBuiltDockerfileHash?: string
   createdAt: string
   /** Last "check for updates" result, persisted so it's visible without re-checking on every page load. */
   lastUpdateCheck?: ImageUpdateCheck & { checkedAt: string }
