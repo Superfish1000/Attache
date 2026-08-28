@@ -59,6 +59,16 @@ export default async function settingsRoutes(app: FastifyInstance) {
     }
     try {
       const content = readFileSync(path)
+      const text = content.toString('utf8')
+      if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(text)) {
+        return reply.code(400).send({
+          error:
+            "this file looks like a private key, not a certificate — check caCertPath points at the CA's public cert (e.g. rootCA.pem), not its key file",
+        })
+      }
+      if (!text.includes('-----BEGIN CERTIFICATE-----')) {
+        return reply.code(400).send({ error: "this file doesn't look like a PEM certificate" })
+      }
       reply.header('Content-Disposition', 'attachment; filename="attache-ca.pem"')
       reply.header('Content-Type', 'application/x-pem-file')
       return reply.send(content)
@@ -87,15 +97,34 @@ export default async function settingsRoutes(app: FastifyInstance) {
     }>
     const s = db.settings
 
+    // Compute the effective resulting server.port and tls.port (request body where
+    // provided, else the current saved value) and validate they'd differ BEFORE
+    // assigning either field below — otherwise a request that changes one to collide
+    // with the other could mutate db.settings.server.port in memory and then 400 on
+    // the tls check, leaving a partially-applied, unsaved change live.
+    let effectiveServerPort = s.server.port
+    if (body.server?.port !== undefined) {
+      const port = Number(body.server.port)
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        return reply.code(400).send({ error: 'port must be an integer between 1 and 65535' })
+      }
+      effectiveServerPort = port
+    }
+    let effectiveTlsPort = s.tls.port
+    if (body.tls?.port !== undefined) {
+      const p = Number(body.tls.port)
+      if (!Number.isInteger(p) || p < 1 || p > 65535) {
+        return reply.code(400).send({ error: 'tls.port must be an integer between 1 and 65535' })
+      }
+      effectiveTlsPort = p
+    }
+    if (effectiveServerPort === effectiveTlsPort) {
+      return reply.code(400).send({ error: 'tls.port must differ from the API port (Settings → Server)' })
+    }
+
     if (body.server) {
       if (body.server.host !== undefined) s.server.host = String(body.server.host).trim()
-      if (body.server.port !== undefined) {
-        const port = Number(body.server.port)
-        if (!Number.isInteger(port) || port < 1 || port > 65535) {
-          return reply.code(400).send({ error: 'port must be an integer between 1 and 65535' })
-        }
-        s.server.port = port
-      }
+      if (body.server.port !== undefined) s.server.port = effectiveServerPort
       if (body.server.publicBaseUrl !== undefined) {
         s.server.publicBaseUrl = String(body.server.publicBaseUrl).trim().replace(/\/+$/, '')
       }
@@ -188,16 +217,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
     }
     if (body.tls) {
       if (body.tls.enabled !== undefined) s.tls.enabled = Boolean(body.tls.enabled)
-      if (body.tls.port !== undefined) {
-        const p = Number(body.tls.port)
-        if (!Number.isInteger(p) || p < 1 || p > 65535) {
-          return reply.code(400).send({ error: 'tls.port must be an integer between 1 and 65535' })
-        }
-        if (p === s.server.port) {
-          return reply.code(400).send({ error: 'tls.port must differ from the API port (Settings → Server)' })
-        }
-        s.tls.port = p
-      }
+      if (body.tls.port !== undefined) s.tls.port = effectiveTlsPort
       if (body.tls.certPath !== undefined) s.tls.certPath = String(body.tls.certPath).trim()
       if (body.tls.keyPath !== undefined) s.tls.keyPath = String(body.tls.keyPath).trim()
       if (body.tls.caCertPath !== undefined) s.tls.caCertPath = String(body.tls.caCertPath).trim()

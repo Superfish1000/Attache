@@ -463,9 +463,19 @@ export default function Settings() {
           <a className="btn" href="/api/settings/tls/ca-cert">
             Download CA certificate
           </a>
+          <span className="muted" style={{ alignSelf: 'center' }}>
+            Save settings first — the download uses the saved CA certificate path.
+          </span>
         </div>
         {tlsStatus && (
-          <p className={tlsStatus.tlsRunning ? 'ok-note' : 'muted'} style={{ marginBottom: 0 }}>
+          // detectedIps/host/tlsPort below reflect the last-saved settings (set by
+          // apply() on load/save), not necessarily what's actually bound — they can
+          // be stale if the fields above were edited without saving.
+          <p
+            className={tlsStatus.tlsRunning ? 'ok-note' : 'muted'}
+            style={{ marginBottom: 0 }}
+            title="Based on last-saved settings — refresh after changing host/port"
+          >
             {tlsStatus.tlsRunning
               ? `Listening on https://${detectedIps[0] ?? host}:${tlsPort}`
               : tlsStatus.tlsError

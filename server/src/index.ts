@@ -85,9 +85,10 @@ await httpApp.listen({ port, host })
 // connection (e.g. Claude Desktop's remote-MCP connector) — the HTTP
 // listener above is completely unaffected either way. A bad cert/key path
 // or a port collision must not take down the app: catch, log, record it.
-if (db.settings.tls.enabled) {
+if (db.settings.tls.enabled && db.settings.tls.certPath && db.settings.tls.keyPath) {
+  let httpsApp: FastifyInstance | undefined
   try {
-    const httpsApp = await buildApp({
+    httpsApp = await buildApp({
       https: {
         key: readFileSync(db.settings.tls.keyPath),
         cert: readFileSync(db.settings.tls.certPath),
@@ -96,6 +97,13 @@ if (db.settings.tls.enabled) {
     await httpsApp.listen({ port: db.settings.tls.port, host })
     runtimeStatus.tlsRunning = true
   } catch (err) {
+    if (httpsApp) {
+      try {
+        await httpsApp.close()
+      } catch {
+        // best-effort — don't let a close failure mask the original error logged below
+      }
+    }
     runtimeStatus.tlsError = (err as Error).message
     httpApp.log.error(err, 'failed to start HTTPS listener — continuing on HTTP only')
   }

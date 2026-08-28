@@ -147,6 +147,8 @@ Attaché can expose its own management capabilities — agents, agent container 
 
 **Connecting over HTTPS.** Claude Desktop's remote-MCP connector requires a trusted HTTPS connection — it won't connect to the plain-HTTP address above. If Claude Desktop runs on a different machine than the one hosting Attaché (the common case) and you don't have a domain name, generate a locally-trusted certificate with [mkcert](https://github.com/FiloSottile/mkcert):
 
+**Before you start:** the HTTPS listener binds the same host as **Settings → Server → API bind host**, which defaults to `127.0.0.1` (loopback-only). Set it to `0.0.0.0` first, or the HTTPS listener will only be reachable from this machine — defeating the point of setting this up for another machine.
+
 1. Install mkcert, then run `mkcert -install` on **this** machine (the one running Attaché) — creates a local certificate authority and installs it into this machine's trust store.
 2. Run `mkcert <this-machine's-LAN-IP> localhost 127.0.0.1` (Settings → HTTPS shows your detected local IPs) — produces a certificate (`<name>+2.pem`) and key (`<name>+2-key.pem`) file.
 3. In **Settings → HTTPS**, enable it, point **Certificate file path** / **Key file path** at those two files, and point **CA certificate file path** at `rootCA.pem` (run `mkcert -CAROOT` to find where that lives) — then restart the server.
@@ -285,7 +287,7 @@ Creates the account as an admin, or — if the email already exists — promotes
 
 - `data/` is gitignored and holds everything sensitive: user records (hashes only), sessions, agent souls/memories, and the definition env (which contains your model API key). Don't commit it.
 - Dashboard credentials are provisioned as hashes; plaintext passwords exist only in transit during login/set-password requests.
-- The GUI listens on all interfaces (LAN-reachable) so other machines can use it; the API stays loopback-only and is reached through the GUI's proxy. On untrusted networks, firewall port 7700 (and the agent port range) or put TLS in front.
+- The GUI listens on all interfaces (LAN-reachable) so other machines can use it; the API stays loopback-only and is reached through the GUI's proxy — except the optional HTTPS listener (Settings → HTTPS), which is a separate, directly-reachable listener bound to its own port, not proxied through the GUI. On untrusted networks, firewall port 7700 (and the agent port range) or put TLS in front.
 
 ## Roadmap
 
