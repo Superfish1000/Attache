@@ -1,12 +1,25 @@
 import type { FastifyInstance } from 'fastify'
+import { networkInterfaces } from 'node:os'
 import { randomBytes } from 'node:crypto'
-import { DATA_DIR, db, save } from '../store.js'
+import { readFileSync } from 'node:fs'
+import { DATA_DIR, db, runtimeStatus, save } from '../store.js'
 import { requireAdmin } from '../auth.js'
 import { sendMail, verifySmtp } from '../mailer.js'
 import { ATTACHE_NETWORK, attacheNetworkExists } from '../docker.js'
 
+/** Non-internal IPv4 addresses on this machine — shown in Settings purely to make the `mkcert <ip> ...` step easier to get right. Not stored, not actionable. */
+function detectLocalIps(): string[] {
+  const ips: string[] = []
+  for (const addrs of Object.values(networkInterfaces())) {
+    for (const addr of addrs ?? []) {
+      if (addr.family === 'IPv4' && !addr.internal) ips.push(addr.address)
+    }
+  }
+  return ips
+}
+
 async function view() {
-  const { server, docker, security, email, selfUpdate, imageUpdates, mcpServer } = db.settings
+  const { server, docker, security, email, selfUpdate, imageUpdates, mcpServer, tls } = db.settings
   return {
     server,
     docker,
@@ -22,6 +35,9 @@ async function view() {
     selfUpdate,
     imageUpdates,
     mcpServer,
+    tls,
+    tlsStatus: runtimeStatus,
+    detectedIps: detectLocalIps(),
     dataDir: DATA_DIR,
     // shared bridge network agent/tool containers use to reach each other by
     // alias — created on demand at first container start, not user-configurable
@@ -35,6 +51,21 @@ export default async function settingsRoutes(app: FastifyInstance) {
   })
 
   app.get('/', async () => view())
+
+  app.get('/tls/ca-cert', async (req, reply) => {
+    const path = db.settings.tls.caCertPath
+    if (!path) {
+      return reply.code(400).send({ error: 'no CA certificate path configured — set it under Settings → HTTPS' })
+    }
+    try {
+      const content = readFileSync(path)
+      reply.header('Content-Disposition', 'attachment; filename="attache-ca.pem"')
+      reply.header('Content-Type', 'application/x-pem-file')
+      return reply.send(content)
+    } catch (err) {
+      return reply.code(500).send({ error: `couldn't read CA certificate file: ${(err as Error).message}` })
+    }
+  })
 
   app.put('/', async (req, reply) => {
     const body = (req.body ?? {}) as Partial<{
@@ -52,6 +83,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
       selfUpdate: Partial<{ autoCheckHours: number; autoApply: boolean }>
       imageUpdates: Partial<{ autoCheckHours: number; autoMode: string }>
       mcpServer: Partial<{ enabled: boolean }>
+      tls: Partial<{ enabled: boolean; port: number; certPath: string; keyPath: string; caCertPath: string }>
     }>
     const s = db.settings
 
@@ -153,6 +185,22 @@ export default async function settingsRoutes(app: FastifyInstance) {
     }
     if (body.mcpServer?.enabled !== undefined) {
       s.mcpServer.enabled = Boolean(body.mcpServer.enabled)
+    }
+    if (body.tls) {
+      if (body.tls.enabled !== undefined) s.tls.enabled = Boolean(body.tls.enabled)
+      if (body.tls.port !== undefined) {
+        const p = Number(body.tls.port)
+        if (!Number.isInteger(p) || p < 1 || p > 65535) {
+          return reply.code(400).send({ error: 'tls.port must be an integer between 1 and 65535' })
+        }
+        if (p === s.server.port) {
+          return reply.code(400).send({ error: 'tls.port must differ from the API port (Settings → Server)' })
+        }
+        s.tls.port = p
+      }
+      if (body.tls.certPath !== undefined) s.tls.certPath = String(body.tls.certPath).trim()
+      if (body.tls.keyPath !== undefined) s.tls.keyPath = String(body.tls.keyPath).trim()
+      if (body.tls.caCertPath !== undefined) s.tls.caCertPath = String(body.tls.caCertPath).trim()
     }
 
     save()

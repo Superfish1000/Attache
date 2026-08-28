@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomBytes, randomUUID } from 'node:crypto'
-import type { Agent, ContainerDef, McpOAuthClient, McpOAuthCode, McpOAuthToken, McpServerDef, McpToolContainerDef, McpToolInstance, ResetToken, Session, Settings, User } from './types.js'
+import type { Agent, ContainerDef, McpOAuthClient, McpOAuthCode, McpOAuthToken, McpServerDef, McpToolContainerDef, McpToolInstance, ResetToken, Session, Settings, TlsSettings, User } from './types.js'
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 export const DATA_DIR = process.env.ATTACHE_DATA_DIR ?? join(ROOT, 'data')
@@ -111,6 +111,7 @@ const defaults = (): DB => ({
     selfUpdate: { autoCheckHours: 0, autoApply: false },
     imageUpdates: { autoCheckHours: 0, autoMode: 'check' },
     mcpServer: { enabled: false, bearerToken: randomBytes(24).toString('hex') },
+    tls: { enabled: true, port: 7702, certPath: '', keyPath: '', caCertPath: '' },
     lastO365Sync: null,
   },
 })
@@ -304,6 +305,7 @@ function load(): { db: DB; migrated: boolean } {
         // never let a backfill produce an empty token — always keep a real one
         bearerToken: raw.settings?.mcpServer?.bearerToken || d.settings.mcpServer.bearerToken,
       },
+      tls: { ...d.settings.tls, ...(raw.settings?.tls ?? {}) },
       lastO365Sync: raw.settings?.lastO365Sync ?? null,
     },
   }
@@ -321,6 +323,12 @@ export function save(): void {
   const tmp = DB_FILE + '.tmp'
   writeFileSync(tmp, JSON.stringify(db, null, 2))
   renameSync(tmp, DB_FILE)
+}
+
+/** Set once by index.ts after attempting the HTTPS listener startup. Never persisted — deliberately outside `db`. */
+export const runtimeStatus: { tlsRunning: boolean; tlsError: string | null } = {
+  tlsRunning: false,
+  tlsError: null,
 }
 
 export function newId(): string {

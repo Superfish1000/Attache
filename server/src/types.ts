@@ -292,6 +292,19 @@ export interface McpServerSettings {
   bearerToken: string
 }
 
+export interface TlsSettings {
+  /** Defaults to true — Attaché attempts the HTTPS listener out of the box; with certPath/keyPath empty until configured, the attempt fails harmlessly and falls back to HTTP-only (see index.ts's try/catch). Once real cert paths are set, HTTPS starts working with no separate "enable" step. */
+  enabled: boolean
+  /** Port the HTTPS listener binds to. Must differ from server.port (same process, same host). */
+  port: number
+  /** Path to a PEM certificate file (e.g. mkcert's issued leaf cert). */
+  certPath: string
+  /** Path to the PEM private key file matching certPath. */
+  keyPath: string
+  /** Path to the CA's public certificate (e.g. mkcert's rootCA.pem) — enables the Settings "Download CA certificate" button. Empty = the button errors clearly on click. */
+  caCertPath: string
+}
+
 /** DCR-registered OAuth client. CIMD clients are fetched+cached in memory instead — see mcp-oauth.ts — and are not stored here. */
 export interface McpOAuthClient {
   id: string
@@ -339,5 +352,6 @@ export interface Settings {
   selfUpdate: SelfUpdateSettings
   imageUpdates: ImageUpdateSettings
   mcpServer: McpServerSettings
+  tls: TlsSettings
   lastO365Sync: string | null
 }
