@@ -36,6 +36,8 @@ export default function AgentDetail() {
   const [docLoaded, setDocLoaded] = useState<Record<string, boolean>>({})
   const [docNote, setDocNote] = useState<Record<string, 'missing' | 'unreadable' | 'via' | undefined>>({})
   const [defs, setDefs] = useState<ContainerDef[]>([])
+  const [defaultEnv, setDefaultEnv] = useState<Record<string, string>>({})
+  const [envViewMode, setEnvViewMode] = useState<'override' | 'effective'>('override')
   const [cronJobs, setCronJobs] = useState<string[]>([])
   const [cronSel, setCronSel] = useState('')
   const [cronText, setCronText] = useState('')
@@ -170,8 +172,45 @@ export default function AgentDetail() {
         .list()
         .then((res) => setDefs(res.defs))
         .catch(() => undefined)
+      api.settings
+        .get()
+        .then((s) => setDefaultEnv(s.docker.defaultEnv))
+        .catch(() => undefined)
     }
   }, [admin])
+
+  /** Layers env the same way startAgentContainer does at container start: default env -> definition env -> per-agent env (agent wins). Used only for the read-only "Effective" view — never for saving. */
+  const effectiveEnvRows = useCallback(() => {
+    const def = defs.find((d) => d.id === agent?.containerId)
+    const defEnv = def?.env ?? {}
+    const agentEnv = agent?.config.env ?? {}
+    const keys = new Set([...Object.keys(defaultEnv), ...Object.keys(defEnv), ...Object.keys(agentEnv)])
+    const rows: Array<{
+      key: string
+      value: string
+      source: 'agent' | 'definition' | 'default'
+      overridden: Array<{ source: 'definition' | 'default'; value: string }>
+    }> = []
+    for (const key of keys) {
+      let value: string
+      let source: 'agent' | 'definition' | 'default'
+      if (key in agentEnv) {
+        value = agentEnv[key]
+        source = 'agent'
+      } else if (key in defEnv) {
+        value = defEnv[key]
+        source = 'definition'
+      } else {
+        value = defaultEnv[key]
+        source = 'default'
+      }
+      const overridden: Array<{ source: 'definition' | 'default'; value: string }> = []
+      if (source === 'agent' && key in defEnv) overridden.push({ source: 'definition', value: defEnv[key] })
+      if (source !== 'default' && key in defaultEnv) overridden.push({ source: 'default', value: defaultEnv[key] })
+      rows.push({ key, value, source, overridden })
+    }
+    return rows.sort((a, b) => a.key.localeCompare(b.key))
+  }, [defs, agent, defaultEnv])
 
   const switchDef = async (containerId: string) => {
     setErr('')
@@ -543,12 +582,51 @@ export default function AgentDetail() {
               <EnvVarsHelp />
             </InfoPopup>
           </label>
-          <textarea
-            rows={5}
-            value={envText}
-            disabled={!admin}
-            onChange={(e) => setEnvText(e.target.value)}
-          />
+          {admin && (
+            <div className="btn-row" style={{ marginBottom: 6 }}>
+              <label className="check-row" style={{ marginRight: 12 }}>
+                <input
+                  type="radio"
+                  checked={envViewMode === 'override'}
+                  onChange={() => setEnvViewMode('override')}
+                />
+                <span>This agent's overrides</span>
+              </label>
+              <label className="check-row">
+                <input
+                  type="radio"
+                  checked={envViewMode === 'effective'}
+                  onChange={() => setEnvViewMode('effective')}
+                />
+                <span>Effective (default + definition + agent, merged)</span>
+              </label>
+            </div>
+          )}
+          {envViewMode === 'effective' && admin ? (
+            <div className="panel" style={{ marginTop: 0 }}>
+              {effectiveEnvRows().length === 0 && <p className="muted">No environment variables set.</p>}
+              {effectiveEnvRows().map((row) => (
+                <div key={row.key} style={{ marginBottom: 4 }}>
+                  <span className="mono">{row.key}</span>
+                  {'='}
+                  <span className="mono">{row.value}</span>{' '}
+                  <span className="muted">({row.source})</span>
+                  {row.overridden.map((o) => (
+                    <span key={o.source} className="muted" style={{ marginLeft: 10 }}>
+                      <s className="mono">{o.value}</s> ({o.source})
+                    </span>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <textarea
+              rows={5}
+              value={envText}
+              disabled={!admin}
+              onChange={(e) => setEnvText(e.target.value)}
+            />
+          )}
         </div>
         <div className="field">
           <label>Data mount path (container)</label>
