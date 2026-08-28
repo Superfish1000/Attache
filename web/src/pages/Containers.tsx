@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import {
   Chip,
-  DockerfileChangedChip,
   EnvVarsHelp,
   ErrorBanner,
   InfoPopup,
@@ -396,7 +395,7 @@ export default function Containers() {
                 <td>{d.files.length}</td>
                 <td>{usedBy(d.id)}</td>
                 <td>
-                  <UpdateLight check={updateChecks[d.id]} /> <DockerfileChangedChip changed={d.dockerfileChanged} />
+                  <UpdateLight check={updateChecks[d.id]} dockerfileChanged={d.dockerfileChanged} />
                 </td>
                 <td>
                   <button className="btn" onClick={() => (selId === d.id ? setSelId('') : select(d))}>
@@ -447,8 +446,10 @@ export default function Containers() {
               </div>
             </div>
             <div className="btn-row" style={{ alignItems: 'center', marginTop: 8 }}>
-              <UpdateLight check={updateChecks[selId]} />
-              <DockerfileChangedChip changed={defs.find((d) => d.id === selId)?.dockerfileChanged} />
+              <UpdateLight
+                check={updateChecks[selId]}
+                dockerfileChanged={defs.find((d) => d.id === selId)?.dockerfileChanged}
+              />
               <button className="btn" disabled={checkingAll} onClick={() => checkOne(selId)}>
                 Check for updates
               </button>

@@ -352,8 +352,26 @@ export function CopyButton({ text }: { text: string }) {
   )
 }
 
-/** Small status dot flagging an image-update check result — "not checked yet" until a check runs (checks are on-demand only; registries rate-limit anonymous checks). */
-export function UpdateLight({ check }: { check: ImageUpdateCheck | null | undefined }) {
+/**
+ * Small status dot flagging an image-update check result — "not checked yet" until a check runs
+ * (checks are on-demand only; registries rate-limit anonymous checks). When the Dockerfile itself
+ * has unbuilt edits, that's a more actionable state than registry freshness, so it replaces the dot
+ * with a short colored pill (same warn color as the "behind" dot) instead of showing both.
+ */
+export function UpdateLight({
+  check,
+  dockerfileChanged,
+}: {
+  check: ImageUpdateCheck | null | undefined
+  dockerfileChanged?: boolean
+}) {
+  if (dockerfileChanged) {
+    return (
+      <span title="The Dockerfile has been edited since the last successful build — click Build image to apply it">
+        <Chip tone="warn">Rebuild</Chip>
+      </span>
+    )
+  }
   if (!check) {
     return (
       <span className="update-light update-light-none" title="Not checked yet">
@@ -381,16 +399,6 @@ export function UpdateLight({ check }: { check: ImageUpdateCheck | null | undefi
       title={check.error ? `Couldn't check: ${check.error}` : 'Unknown'}
     >
       ●
-    </span>
-  )
-}
-
-/** Flags a Dockerfile with edits since its last successful build — distinct from UpdateLight (registry vs. local build) and NeedsRegenLight (running container vs. local build); this one is Dockerfile text vs. what was actually built. */
-export function DockerfileChangedChip({ changed }: { changed: boolean | undefined }) {
-  if (!changed) return null
-  return (
-    <span title="The Dockerfile has been edited since the last successful build — click Build image to apply it">
-      <Chip tone="warn">Dockerfile changed — rebuild needed</Chip>
     </span>
   )
 }
