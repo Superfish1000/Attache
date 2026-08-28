@@ -145,6 +145,16 @@ Attaché can expose its own management capabilities — agents, agent container 
 
 **Connecting an external client (OAuth).** Point a remote MCP client (Claude Desktop, Claude.ai's remote-MCP connector, etc.) at `<Public GUI address>/mcp` (Settings → Server → **Public GUI address** must be set — OAuth needs a stable public address to scope tokens to). The client registers via Dynamic Client Registration (`POST /register`) or a Client ID Metadata Document (a `client_id` that's itself an HTTPS URL Attaché fetches), then walks the standard OAuth 2.1 + PKCE authorization-code flow. The first connection shows an admin a consent prompt ("*`<client>`* wants to connect to Attaché's MCP server — Approve/Deny") — only an admin can approve, since approving grants full admin-equivalent access. Approved clients show up under **Settings → MCP management server → Connected OAuth clients**, with a **Revoke** action.
 
+**Connecting over HTTPS.** Claude Desktop's remote-MCP connector requires a trusted HTTPS connection — it won't connect to the plain-HTTP address above. If Claude Desktop runs on a different machine than the one hosting Attaché (the common case) and you don't have a domain name, generate a locally-trusted certificate with [mkcert](https://github.com/FiloSottile/mkcert):
+
+1. Install mkcert, then run `mkcert -install` on **this** machine (the one running Attaché) — creates a local certificate authority and installs it into this machine's trust store.
+2. Run `mkcert <this-machine's-LAN-IP> localhost 127.0.0.1` (Settings → HTTPS shows your detected local IPs) — produces a certificate (`<name>+2.pem`) and key (`<name>+2-key.pem`) file.
+3. In **Settings → HTTPS**, enable it, point **Certificate file path** / **Key file path** at those two files, and point **CA certificate file path** at `rootCA.pem` (run `mkcert -CAROOT` to find where that lives) — then restart the server.
+4. On the **other** machine (wherever Claude Desktop runs), open Attaché's existing HTTP address, go to **Settings → HTTPS**, and click **Download CA certificate**. Import that file into that machine's trust store the same way `mkcert -install` did on this one (Windows: double-click the file → Install Certificate → Local Machine → Trusted Root Certification Authorities).
+5. Point Claude Desktop's MCP connector at `https://<this-machine's-LAN-IP>:<HTTPS port>/mcp`, and update **Public GUI address** (Settings → Server) to that same `https://...` address — that's the field the OAuth flow uses to scope tokens and build discovery URLs.
+
+The existing plain-HTTP address keeps working unchanged throughout — for browsing the GUI, and for the agent-container-to-Attaché MCP wiring described above, which stays on HTTP permanently (that connection uses `host.docker.internal`, Docker's own mechanism for a container to reach its host machine, and is unrelated to needing a trusted certificate).
+
 **Connecting locally (stdio).** `npm run mcp-stdio` (from `server/`) runs the same tools over stdio, in-process, no network/auth layer — for local-machine MCP clients that prefer a subprocess over HTTP.
 
 **Destructive-action safety.** Every tool that deletes, stops, or recreates something already running (`delete_*`, `stop_*`, `regenerate_*`, and `upgrade_*`/`upgrade_all_*` calls with `mode: 'update-regen'`) requires `confirm: true` in its input. This is a cheap safety net against a hallucinated or misfired call, not a hard security boundary — a determined/compromised client can always pass `confirm: true`, which is an acceptable tradeoff given the access model is already full-admin trust for any holder of a valid credential.
@@ -242,6 +252,7 @@ Sync semantics are **disable, don't delete**: members who leave the group are di
 - **Docker** — universal daemon config: socket/pipe path, auto-pull, host-port range start, restart policy, security options, and the shared **default env** merged into every container (settings → definition → agent, later wins).
 - **Security** — session lifetime. Passwords are scrypt hashes; sessions persist across server restarts.
 - **MCP management server** — enable/disable, the Bearer token agents use to connect (reveal/regenerate), and connected OAuth clients (revoke). See *MCP management server* above.
+- **HTTPS** — a second listener (enabled by default — a no-op until a certificate is configured) for clients that require a trusted connection, e.g. Claude Desktop's remote-MCP connector. Port, certificate/key file paths, an optional CA certificate path (enables a **Download CA certificate** button, for installing on a different machine's trust store), and a status line showing whether it's actually running. See *Connecting over HTTPS* above.
 
 ## Account recovery / CLI account creation
 

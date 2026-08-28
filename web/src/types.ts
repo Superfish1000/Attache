@@ -252,6 +252,11 @@ export interface SettingsView {
   /** Scheduled check/upgrade for agent + MCP tool container image definitions. autoCheckHours = 0 disables it. */
   imageUpdates: { autoCheckHours: number; autoMode: 'check' | 'stage' | 'update' | 'update-regen' }
   mcpServer: { enabled: boolean; bearerToken: string }
+  tls: { enabled: boolean; port: number; certPath: string; keyPath: string; caCertPath: string }
+  /** Whether the HTTPS listener actually came up at boot — null-safe on the frontend since it's absent only in the impossible case the API itself is unreachable. */
+  tlsStatus: { tlsRunning: boolean; tlsError: string | null }
+  /** Non-internal IPv4 addresses on the server machine — informational only, for the mkcert setup step. */
+  detectedIps: string[]
   dataDir: string
   /** Shared bridge network agent/tool containers use to reach each other by alias — created on demand, not user-configurable. */
   network: { name: string; exists: boolean }

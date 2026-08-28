@@ -192,6 +192,7 @@ export const api = {
       selfUpdate?: Partial<SettingsView['selfUpdate']>
       imageUpdates?: Partial<SettingsView['imageUpdates']>
       mcpServer?: Partial<{ enabled: boolean }>
+      tls?: Partial<SettingsView['tls']>
     }) => req<SettingsView>('/api/settings', json('PUT', s)),
     emailTest: () => req<{ ok: boolean; to: string }>('/api/settings/email/test', { method: 'POST' }),
     regenerateMcpToken: () =>

@@ -31,6 +31,13 @@ export default function Settings() {
   const [mcpToken, setMcpToken] = useState('')
   const [mcpTokenVisible, setMcpTokenVisible] = useState(false)
   const [mcpClients, setMcpClients] = useState<McpOAuthClient[]>([])
+  const [tlsEnabled, setTlsEnabled] = useState(false)
+  const [tlsPort, setTlsPort] = useState('7702')
+  const [certPath, setCertPath] = useState('')
+  const [keyPath, setKeyPath] = useState('')
+  const [caCertPath, setCaCertPath] = useState('')
+  const [tlsStatus, setTlsStatus] = useState<SettingsView['tlsStatus'] | null>(null)
+  const [detectedIps, setDetectedIps] = useState<string[]>([])
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -147,6 +154,13 @@ export default function Settings() {
     setImgAutoMode(s.imageUpdates.autoMode)
     setMcpEnabled(s.mcpServer.enabled)
     setMcpToken(s.mcpServer.bearerToken)
+    setTlsEnabled(s.tls.enabled)
+    setTlsPort(String(s.tls.port))
+    setCertPath(s.tls.certPath)
+    setKeyPath(s.tls.keyPath)
+    setCaCertPath(s.tls.caCertPath)
+    setTlsStatus(s.tlsStatus)
+    setDetectedIps(s.detectedIps)
   }
 
   useEffect(() => {
@@ -219,6 +233,13 @@ export default function Settings() {
         selfUpdate: { autoCheckHours: Number(selfAutoHours) || 0, autoApply: selfAutoApply },
         imageUpdates: { autoCheckHours: Number(imgAutoHours) || 0, autoMode: imgAutoMode },
         mcpServer: { enabled: mcpEnabled },
+        tls: {
+          enabled: tlsEnabled,
+          port: Number(tlsPort) || 7702,
+          certPath: certPath.trim(),
+          keyPath: keyPath.trim(),
+          caCertPath: caCertPath.trim(),
+        },
       })
       apply(saved)
       setEmPass('')
@@ -400,6 +421,69 @@ export default function Settings() {
               </tbody>
             </table>
           </>
+        )}
+      </div>
+
+      <h2>HTTPS</h2>
+      <div className="panel">
+        <p className="muted" style={{ marginTop: 0 }}>
+          A second listener, alongside the existing one, for clients that require a trusted HTTPS
+          connection — e.g. Claude Desktop's remote-MCP connector, which won't connect over plain
+          HTTP. Enabled by default (it's a harmless no-op until you set a certificate below); the
+          existing HTTP listener (GUI browsing, and the agent-to-Attaché MCP wiring under
+          Containers) is unaffected either way. Takes effect after a server restart.
+        </p>
+        <label className="check-row">
+          <input type="checkbox" checked={tlsEnabled} onChange={(e) => setTlsEnabled(e.target.checked)} />
+          <span>Enabled</span>
+        </label>
+        <div className="form-row" style={{ marginTop: 14 }}>
+          <div className="field">
+            <label>HTTPS port</label>
+            <input value={tlsPort} onChange={(e) => setTlsPort(e.target.value)} placeholder="7702" />
+          </div>
+        </div>
+        <div className="field">
+          <label>Certificate file path</label>
+          <input value={certPath} onChange={(e) => setCertPath(e.target.value)} placeholder="C:\certs\attache.pem" />
+        </div>
+        <div className="field">
+          <label>Key file path</label>
+          <input value={keyPath} onChange={(e) => setKeyPath(e.target.value)} placeholder="C:\certs\attache-key.pem" />
+        </div>
+        <div className="field">
+          <label>CA certificate file path (optional — enables the download below)</label>
+          <input
+            value={caCertPath}
+            onChange={(e) => setCaCertPath(e.target.value)}
+            placeholder="C:\certs\rootCA.pem"
+          />
+        </div>
+        <div className="btn-row">
+          <a className="btn" href="/api/settings/tls/ca-cert">
+            Download CA certificate
+          </a>
+        </div>
+        {tlsStatus && (
+          <p className={tlsStatus.tlsRunning ? 'ok-note' : 'muted'} style={{ marginBottom: 0 }}>
+            {tlsStatus.tlsRunning
+              ? `Listening on https://${detectedIps[0] ?? host}:${tlsPort}`
+              : tlsStatus.tlsError
+                ? `Not running — failed to start: ${tlsStatus.tlsError}`
+                : 'Not running.'}
+          </p>
+        )}
+        {detectedIps.length > 0 && (
+          <p className="muted" style={{ marginBottom: 0, marginTop: 8 }}>
+            Detected local IPs:{' '}
+            {detectedIps.map((ip) => (
+              <span key={ip} className="mono" style={{ marginRight: 8 }}>
+                {ip}
+              </span>
+            ))}
+            — use one of these with <span className="mono">mkcert</span> when generating a
+            certificate.
+          </p>
         )}
       </div>
 
